@@ -1,0 +1,13 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.11",
+  "include": [
+    "elab_server",
+    "elab_clients_core",
+    "elab_api",
+    "elab_bridge",
+    "server.py",
+    "tools/log_viewer.py"
+  ]
+}

@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="100%" height="100%">
+    <defs>
+        <!-- Glow Filter for the Neon/Scope Effect -->
+        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+            </feMerge>
+        </filter>
+
+        <!-- Dynamic Data Gradient (from COLOR_PALETTE) -->
+        <linearGradient id="wave-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#06b6d4" />  <!-- Cyan -->
+            <stop offset="35%" stop-color="#3b82f6" /> <!-- Blue -->
+            <stop offset="70%" stop-color="#8b5cf6" /> <!-- Violet -->
+            <stop offset="100%" stop-color="#ec4899" /> <!-- Pink -->
+        </linearGradient>
+
+        <!-- Measurement Grid Pattern -->
+        <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+            <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#2d2f31" stroke-width="1.5" />
+        </pattern>
+
+        <!-- Clip to keep the grid inside the rounded icon -->
+        <clipPath id="icon-clip">
+            <rect x="16" y="16" width="224" height="224" rx="48" />
+        </clipPath>
+    </defs>
+
+    <!-- Icon Base / Panel Elevated -->
+    <!-- Ein dunkler Hintergrund ist wichtig, damit der Neon-Wave-Effekt in hellen Browser-Themes sichtbar bleibt -->
+    <rect x="16" y="16" width="224" height="224" rx="48" fill="#1e293b" stroke="#334155" stroke-width="2" />
+    
+    <!-- Grid overlay clipped to the icon -->
+    <rect x="16" y="16" width="224" height="224" fill="url(#grid)" clip-path="url(#icon-clip)" opacity="0.8" />
+
+    <g>
+        <!-- The Trace (Outer Glow Layer) -->
+        <path d="M 70 136 L 142 136 L 142 72 L 62 72 L 62 184 L 110 184 L 126 104 L 142 184 L 194 184"
+              fill="none" stroke="url(#wave-gradient)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" opacity="0.5" filter="url(#glow)" />
+
+        <!-- The Trace (Main Core Layer) -->
+        <path d="M 70 136 L 142 136 L 142 72 L 62 72 L 62 184 L 110 184 L 126 104 L 142 184 L 194 184"
+              fill="none" stroke="url(#wave-gradient)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />
+
+        <!-- The Trace (White Hot Center) -->
+        <path d="M 70 136 L 142 136 L 142 72 L 62 72 L 62 184 L 110 184 L 126 104 L 142 184 L 194 184"
+              fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" />
+
+        <!-- Endpoints / Nodes -->
+        <!-- Data Source Node (Cyan) -->
+        <circle cx="70" cy="136" r="12" fill="#06b6d4" opacity="0.4" filter="url(#glow)" />
+        <circle cx="70" cy="136" r="5" fill="#ffffff" />
+        
+        <!-- Action/Target Node (Emerald - state.success) -->
+        <circle cx="194" cy="184" r="12" fill="#10b981" opacity="0.4" filter="url(#glow)" />
+        <circle cx="194" cy="184" r="5" fill="#ffffff" />
+    </g>
+</svg>

@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Optionale globale Stile für Scrollbars etc. */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: var(--sys-background-app);
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--sys-surface-subtle);
+  border-radius: 3px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--sys-border-default);
+}
+
+/* 5+1 Grid Layout: Large slot at bottom-left, 5 smaller slots around it */
+.grid-5x1-layout {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+}
+
+.grid-5x1-layout > :nth-child(1) {
+  /* Large main slot: 2x2 at bottom-left */
+  grid-column: 1 / 3;
+  grid-row: 2 / 4;
+}
+
+.grid-5x1-layout > :nth-child(2) {
+  /* Small slot: top-left */
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.grid-5x1-layout > :nth-child(3) {
+  /* Small slot: top-middle */
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.grid-5x1-layout > :nth-child(4) {
+  /* Small slot: top-right */
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.grid-5x1-layout > :nth-child(5) {
+  /* Small slot: right-middle */
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.grid-5x1-layout > :nth-child(6) {
+  /* Small slot: right-bottom */
+  grid-column: 3;
+  grid-row: 3;
+}
