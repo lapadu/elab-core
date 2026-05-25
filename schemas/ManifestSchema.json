@@ -1,0 +1,340 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "E-Lab Provider Manifest",
+  "type": "object",
+  "required": ["id", "name", "category", "tasks"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_\\-]+$",
+      "description": "Permanent, globally unique provider identifier. Must remain constant across restarts and reconnects – derived from hardware serial number, MAC address, or equivalent immutable source."
+    },
+    "name": { "type": "string" },
+    "category": {
+      "type": "string",
+      "enum": ["HARDWARE", "VIRTUAL_INTERNAL", "VIRTUAL_SCRIPT"],
+      "default": "HARDWARE",
+      "description": "Provider category. HARDWARE for physical devices (incl. adapters), VIRTUAL_INTERNAL for built-in virtual sources, VIRTUAL_SCRIPT for script-based virtual sources."
+    },
+    "providerVersion": {
+      "type": "string",
+      "default": "1.0.0",
+      "description": "Provider implementation version."
+    },
+    "apiVersion": {
+      "type": "string",
+      "default": "2.0.1",
+      "description": "API version for compatibility checks."
+    },
+    "persistConfig": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, the provider persists configuration (alias, color overrides) autonomously. This means the device behaves identically across different E-Lab instances. If false (default), the E-Lab dispatcher stores configuration in its SQLite DB on behalf of the provider."
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/task" }
+    }
+  },
+  "if": {
+    "properties": { "category": { "const": "VIRTUAL_INTERNAL" } }
+  },
+  "then": {
+    "properties": {
+      "tasks": {
+        "items": {
+          "properties": {
+            "ui": {
+              "properties": { "mode": { "const": "generic" } }
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "task": {
+      "type": "object",
+      "required": ["id", "name", "type", "ui"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Permanent, unique task identifier. Must remain constant across restarts – like a hardware serial number or MAC-derived value. Used by E-Lab to track configuration (alias, color) persistently."
+        },
+        "name": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": ["SENSOR", "ACTUATOR", "MATH", "MEASURE", "CONTROL", "GENERATOR"]
+        },
+        "groupId": { "type": "string", "description": "Groups tasks within a provider into a functional unit. The hardware supports only one task of a group at a time." },
+        "color": {
+          "type": "string",
+          "description": "Default hex color for this task (e.g. #ef4444). Acts as the initial visualization color for SENSOR, MATH, MEASURE, CONTROL, and GENERATOR tasks. Can be overridden at runtime by the user at source or sink level. Color changes at a sink propagate back to the nearest upstream source (but not beyond intermediate processing modules like MATH)."
+        },
+        "virtual": { "type": "boolean" },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Freeform tags for filtering in the UI (e.g. multimeter, temperature, usb)."
+        },
+        "group": {
+          "type": "string",
+          "description": "Task group for exclusivity. Tasks in the same group can be dispatched in parallel; tasks in different groups are mutually exclusive per provider."
+        },
+        "actions": {
+          "type": "array",
+          "description": "Declarative list of special commands that the task provider supports. The UI renders action buttons only for declared actions.",
+          "items": {
+            "type": "object",
+            "required": ["id", "label"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "The command action string sent via cmd_control (e.g. START_RAW)."
+              },
+              "label": { "type": "string" },
+              "icon": {
+                "type": "string",
+                "description": "Lucide icon name to display in the UI."
+              }
+            }
+          }
+        },
+        "config": {
+          "type": "object",
+          "$comment": "Task runtime configuration. Any model-level uncertainty should be declared in config.accuracy so UI and MATH tasks can propagate uncertainty consistently.",
+          "properties": {
+            "range": { "type": "array", "items": { "type": "number" } },
+            "unit": { "type": "string" },
+            "siUnit": { "type": "string" },
+            "factor": { "type": "number", "description": "Multiplication factor to convert from unit to siUnit." },
+            "triggerMode": { "type": "string" },
+            "sampleRate": { "type": "number", "description": "Sample rate in samples per second. Describes the resolution of a SENSOR stream." },
+            "accuracy": {
+              "description": "Structured measurement uncertainty model. Set to null to disable uncertainty metadata for this task.",
+              "$comment": "Server uses this object to derive payload uncertainty in decoded units. Prefer explicit models over a single percent number.",
+              "anyOf": [
+                { "$ref": "#/definitions/accuracyObject" },
+                { "type": "null" }
+              ]
+            },
+            "medianGroupSize": { "type": "number" },
+            "dmaBufferSamples": { "type": "number" },
+            "noiseEnabled": { "type": "boolean" },
+            "singleSource": { "type": "boolean" },
+            "providerId": { "type": "string" },
+            "configFields": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["key", "label", "type"],
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "description": "The property key under which the value is stored and sent."
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "Display name of the configuration element."
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "number",
+                      "slider",
+                      "select",
+                      "toggle",
+                      "datetime",
+                      "text",
+                      "button"
+                    ],
+                    "description": "UI element type: number, slider, select, toggle, datetime, text, button."
+                  },
+                  "value": {
+                    "description": "Current value used to initialize the UI."
+                  },
+                  "min": {
+                    "type": "number",
+                    "description": "Minimum value (relevant for number and slider)."
+                  },
+                  "max": {
+                    "type": "number",
+                    "description": "Maximum value (relevant for number and slider)."
+                  },
+                  "step": {
+                    "type": "number",
+                    "description": "Step size (relevant for number and slider)."
+                  },
+                  "unit": {
+                    "type": "string",
+                    "description": "Unit label (for example Hz) displayed next to the field."
+                  },
+                  "default": {
+                    "description": "Default value used when current value is missing."
+                  },
+                  "placeholder": {
+                    "type": "string",
+                    "description": "Placeholder text for text input fields."
+                  },
+                  "buttonText": {
+                    "type": "string",
+                    "description": "Label for button fields. Clicking triggers update_config with action=key."
+                  },
+                  "options": {
+                    "type": "array",
+                    "description": "Choices for type=select. Each element contains label and value.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "value": {},
+                        "label": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "decoder": {
+          "type": "object",
+          "$comment": "Decoder converts transport/binary payload to engineering units. If linearizationTable is present, uncertainty transformation should use local derivative (segment slope), not a global range ratio.",
+          "properties": {
+            "type": { "type": "string" },
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "dataType": {
+                  "type": "string",
+                  "enum": [
+                    "uint8",
+                    "uint16",
+                    "uint32",
+                    "int8",
+                    "int16",
+                    "int32",
+                    "float32",
+                    "float64"
+                  ]
+                },
+                "endianness": { "type": "string", "enum": ["big", "little"] },
+                "zeroValue": { "type": "number" },
+                "valueRange": { "type": "number" },
+                "measurementRange": { "type": "number" },
+                "linearizationTable": {
+                  "type": "array",
+                  "$comment": "Piecewise-linear transfer table [x_raw_scaled, y_engineering]. For uncertainty mapping, use local dy/dx from the active segment.",
+                  "items": {
+                    "type": "array",
+                    "items": { "type": "number" },
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                }
+              }
+            }
+          }
+        },
+        "ui": {
+          "type": "object",
+          "required": ["mode"],
+          "properties": {
+            "mode": { "type": "string", "enum": ["generic", "custom"] },
+            "template": { "type": "string" },
+            "url": { "type": "string" },
+            "integrity": {
+              "type": "string",
+              "pattern": "^sha(256|384|512)-[A-Za-z0-9+/=]+$",
+              "description": "Optional Subresource Integrity (SRI) hash for the remote plugin script."
+            },
+            "componentName": { "type": "string" },
+            "apiVersion": {
+              "type": "string",
+              "description": "API version expected by the remote plugin."
+            },
+            "views": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "label": { "type": "string" },
+                  "icon": { "type": "string" },
+                  "template": { "type": "string" }
+                },
+                "required": ["id", "label", "template"]
+              }
+            },
+            "defaultTemplate": { "type": "string" }
+          }
+        }
+      }
+    },
+    "accuracyObject": {
+      "type": "object",
+      "required": ["model"],
+      "$comment": "Model library for uncertainty. Systematic terms are absolute bounds. Random terms are 1-sigma. MATH mean filters should reduce randomSigma by sqrt(n) while keeping systematicAbs unchanged.",
+      "properties": {
+        "model": {
+          "type": "string",
+          "enum": [
+            "percent_reading",
+            "absolute",
+            "percent_reading_plus_absolute",
+            "percent_reading_plus_digits",
+            "adc_quantization_only",
+            "random_sigma",
+            "combined"
+          ],
+          "$comment": "Use 'combined' to compose nested systematic/random models. Use 'percent_reading_plus_digits' for DMM-like specs."
+        },
+        "relativePctReading": {
+          "type": "number",
+          "$comment": "Relative contribution in percent of |measured value|."
+        },
+        "absoluteOffset": {
+          "type": "number",
+          "$comment": "Absolute contribution in measurement unit."
+        },
+        "digits": {
+          "type": "number",
+          "$comment": "Count of display digits in a '% reading + digits' model."
+        },
+        "digitReference": {
+          "type": "string",
+          "enum": ["ui_lsd", "adc_lsb", "explicit_step"],
+          "default": "ui_lsd",
+          "$comment": "ESP32/ADC note: adc_lsb may differ from UI least-significant digit. Choose explicitly."
+        },
+        "displayStep": {
+          "type": "number",
+          "$comment": "Absolute step size of UI LSD when digitReference == ui_lsd."
+        },
+        "digitStep": {
+          "type": "number",
+          "$comment": "Explicit absolute step size when digitReference == explicit_step."
+        },
+        "randomSigma": {
+          "type": "number",
+          "$comment": "Random uncertainty as 1-sigma in measurement unit."
+        },
+        "confidenceK": {
+          "type": "number",
+          "default": 2.0,
+          "$comment": "Coverage factor for display bounds (for example k=2)."
+        },
+        "systematic": {
+          "$ref": "#/definitions/accuracyObject",
+          "$comment": "Nested model for systematic contribution."
+        },
+        "random": {
+          "$ref": "#/definitions/accuracyObject",
+          "$comment": "Nested model for random contribution."
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}
