@@ -1,6 +1,6 @@
 # e_Lab Core
 
-![e_Lab Webside](www.e-lab.app)
+Visit on **www.e-lab.app**
 
 ![E-Lab Overview](doc/assets/screen.png)
 
