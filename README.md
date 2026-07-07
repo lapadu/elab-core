@@ -1,5 +1,7 @@
 # e_Lab Core
 
+Visit on **www.e-lab.app**
+
 ![E-Lab Overview](doc/assets/screen.png)
 
 e_Lab is a modern, distributed application designed to seamlessly connect hardware data sources (such as sensors and simulators) with web-based user interfaces. By utilizing a decoupled architecture consisting of a Python backend and a React frontend, e_Lab provides a highly flexible and dynamic environment for hardware monitoring and control.
