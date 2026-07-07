@@ -22,6 +22,7 @@ import socketio
 import numpy as np
 
 from elab_api.shared_memory_channel import SharedMemoryChannel
+from elab_clients_core.python.shared.auth import ProviderAuth
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,10 @@ class BridgeDaemon:
 
         self._nodes: Dict[str, ConnectedNode] = {}
         self._nodes_lock = threading.Lock()
+        # Per-node authentication state. Each external node gets its own
+        # ProviderAuth instance keyed by the node's manifest id (= device_id),
+        # because credentials/secrets live per-device, not per-bridge.
+        self._node_auths: Dict[str, ProviderAuth] = {}
         self._running = False
 
         # ZMQ context and sockets
@@ -199,6 +204,42 @@ class BridgeDaemon:
             """Forward incoming stream data to subscribed nodes."""
             self._forward_stream_data(data)
 
+        # --- Provider pairing events (one socket, many proxied devices) ----
+        @self._sio.on("registration_approved")
+        def on_registration_approved(data):
+            if not isinstance(data, dict):
+                return
+            device_id = data.get("deviceId")
+            secret = data.get("secret")
+            if not isinstance(device_id, str) or not isinstance(secret, str):
+                return
+            auth = self._node_auths.get(device_id)
+            if auth is None:
+                logger.warning("registration_approved for unknown device_id %s", device_id)
+                return
+            # Inject the secret via the same code path the real client uses.
+            with auth._lock:  # pylint: disable=protected-access
+                auth._secret_hex = secret  # pylint: disable=protected-access
+            auth._save_secret(secret)      # pylint: disable=protected-access
+            auth._approved.set()           # pylint: disable=protected-access
+            logger.info("✅ Bridge: device %s approved by dispatcher", device_id)
+
+        @self._sio.on("registration_pending")
+        def on_registration_pending(data):
+            logger.info("⏳ Bridge: device pending operator approval: %r", data)
+
+        @self._sio.on("registration_revoked")
+        def on_registration_revoked(data):
+            if not isinstance(data, dict):
+                return
+            device_id = data.get("deviceId")
+            if not isinstance(device_id, str):
+                return
+            auth = self._node_auths.pop(device_id, None)
+            if auth is not None:
+                auth.forget()
+            logger.warning("⛔ Bridge: device %s credential revoked", device_id)
+
         try:
             self._sio.connect(self._dispatcher_url, wait_timeout=10)
         except socketio.exceptions.ConnectionError as exc:
@@ -318,11 +359,18 @@ class BridgeDaemon:
         with self._nodes_lock:
             self._nodes[node_id] = node
 
+        # Set up per-node authentication state, then forward registration.
+        auth = self._node_auths.get(node_id)
+        if auth is None:
+            auth = ProviderAuth(device_id=node_id)
+            self._node_auths[node_id] = auth
+
         # Forward registration to the dispatcher
         try:
-            self._sio.emit("register_provider", manifest)
+            assert self._sio is not None
+            auth.send_register(self._sio, manifest)
             logger.info("Registered node '%s' with dispatcher.", node_id)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-except
             logger.error("Failed to register with dispatcher: %s", exc)
             return {"status": "error", "error": str(exc)}
 
@@ -367,13 +415,20 @@ class BridgeDaemon:
         # Read the data from SHM and forward to dispatcher
         data = channel.read_latest(count)
         if len(data) > 0:
-            # Stream to dispatcher as a data_stream event
-            self._sio.emit("data_stream", {
+            payload = {
                 # Dispatcher expects camelCase sourceId on inbound data_stream.
                 "sourceId": task_id,
                 "values": data.tolist(),
                 "timestamp": timestamp_ns / 1e9,
-            })
+            }
+            auth = self._node_auths.get(node_id)
+            if auth is None or not auth.has_secret():
+                # Not yet approved by operator; drop instead of sending an
+                # unsigned packet (which would be rejected anyway).
+                logger.debug("Dropping data_stream from unapproved node %s", node_id)
+                return {"status": "ok", "dropped": True}
+            assert self._sio is not None
+            self._sio.emit("data_stream", auth.sign(payload))
 
         return {"status": "ok"}
 

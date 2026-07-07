@@ -22,6 +22,10 @@ dependencies = [
 elab-bridge-daemon = "elab_bridge.bridge_daemon:main"
 
 [tool.setuptools.packages.find]
+# Bewusste Entscheidung: ``pip install -e .`` installiert nur die schlanke
+# Local-API + Bridge. Clients (``elab_clients_core`` / ``elab_clients_premium``)
+# und der Dispatcher (``elab_server``) werden separat ausgeliefert (eigene
+# Repos / PyInstaller-Spec-Dateien) und sind hier absichtlich NICHT enthalten.
 include = ["elab_api*", "elab_bridge*"]
 
 [tool.setuptools.package-data]

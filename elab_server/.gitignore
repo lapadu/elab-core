@@ -1,2 +1,7 @@
 # Python Cache
 __pycache__
+
+# SQLite runtime files
+elab_config.sqlite
+*.sqlite-shm
+*.sqlite-wal

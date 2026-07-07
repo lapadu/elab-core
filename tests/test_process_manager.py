@@ -72,9 +72,11 @@ def _make_pm(tmp_path):
     scripts_dir.mkdir(exist_ok=True)
     pm = ClientProcessManager.__new__(ClientProcessManager)
     pm.clients_dir = str(scripts_dir)
+    pm._extra_dirs = []
     pm.running_processes = {}
     pm._stop = threading.Event()
     pm._python = "python"
+    pm._auth_state = None
     return pm, scripts_dir
 
 

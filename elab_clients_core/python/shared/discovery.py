@@ -107,3 +107,26 @@ def discover_dispatcher(
         return None
     finally:
         sock.close()
+
+
+def discover_dispatcher_udp(
+    udp_port: int,
+    logger: Any,
+    *,
+    max_attempts: int = 1,
+    timeout_sec: float = 3.0,
+    prefer_non_loopback: bool = True,
+) -> str | None:
+    """Convenience wrapper used by clients.
+
+    Centralises the defaults previously duplicated in each premium client
+    (``max_attempts=1``, ``timeout_sec=3.0``, ``prefer_non_loopback=True``)
+    so call sites stay one-liners.
+    """
+    return discover_dispatcher(
+        udp_port,
+        logger,
+        max_attempts=max_attempts,
+        timeout_sec=timeout_sec,
+        prefer_non_loopback=prefer_non_loopback,
+    )

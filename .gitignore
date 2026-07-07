@@ -9,6 +9,8 @@ __pycache__/
 # Distribution / packaging
 .Python
 build/
+build_*/
+TimeConnect_*.zip
 develop-eggs/
 dist/
 downloads/
@@ -72,3 +74,9 @@ elab_clients_core/temp_test_client_overrides.json
 
 # Coverage
 test-results
+
+# Server config
+servers.json
+
+# Deployment
+deploy/

@@ -5,6 +5,10 @@
 #include <freertos/queue.h>
 #include "driver/i2s.h"
 #include "esp_task_wdt.h"
+#include <Preferences.h>
+#include <mbedtls/md.h>
+#include <time.h>
+#include <sys/time.h>
 
 // --- WATCHDOG CONFIGURATION ---
 // Hardware task watchdog timeout. The processing task and the main loop
@@ -24,6 +28,9 @@ const char* ssid = "my ssid";
 const char* password = "my password";
 // e_Lab configuration
 const int UDP_DISCOVERY_PORT = 5005;
+String serverIPs[10];
+int serverIPCount = 0;
+int currentServerIPIndex = 0;
 String serverIP = "";
 uint16_t serverPort = 0;
 bool serverFound = false;
@@ -72,6 +79,117 @@ const int MAX_RECONNECT_ATTEMPTS = 5;
 // until the socket is connected, because socketIO.loop() can block for
 // >8 s during TCP handshake, which would trigger a false WDT reset.
 static bool loopWdtActive = false;
+
+// ======================================================================
+// AUTHENTICATION (TOFU pairing + HMAC-SHA256 signing of data_stream)
+// ======================================================================
+// The dispatcher quarantines unknown providers until an operator approves
+// them in the workbench. After approval the dispatcher sends back a
+// one-shot shared secret (`registration_approved`) which we persist in
+// NVS. Every subsequent `data_stream` packet is signed with HMAC-SHA256
+// over ("<ts>\n" + canonical JSON of payload-without-auth). The server
+// drops any packet that doesn't carry a valid signature.
+//
+// CRITICAL: the inner payload JSON MUST be emitted with keys in strict
+// alphabetical order so that the bytes we hash here match what the server
+// canonicalizes via json.dumps(sort_keys=True, separators=(",",":")).
+static Preferences authPrefs;
+static String hmacSecretHex = "";   // 64 hex chars when present
+static bool   isApproved    = false;
+static const char* AUTH_NVS_NS  = "elab_auth";
+static const char* AUTH_NVS_KEY = "secret";
+static const char* DEVICE_ID    = "esp32_voltmeter_01"; // must match manifest.id
+
+static void loadStoredSecret() {
+    authPrefs.begin(AUTH_NVS_NS, true /* readonly */);
+    String stored = authPrefs.getString(AUTH_NVS_KEY, "");
+    authPrefs.end();
+    if (stored.length() == 64) {
+        hmacSecretHex = stored;
+        isApproved = true;
+        Serial.println("[AUTH] Cached pairing secret loaded from NVS.");
+    } else {
+        Serial.println("[AUTH] No pairing secret yet — waiting for operator approval.");
+    }
+}
+
+static void saveSecret(const String& sec) {
+    authPrefs.begin(AUTH_NVS_NS, false /* read/write */);
+    authPrefs.putString(AUTH_NVS_KEY, sec);
+    authPrefs.end();
+}
+
+static void clearSecret() {
+    authPrefs.begin(AUTH_NVS_NS, false);
+    authPrefs.remove(AUTH_NVS_KEY);
+    authPrefs.end();
+    hmacSecretHex = "";
+    isApproved = false;
+    Serial.println("[AUTH] Pairing secret cleared (revoked).");
+}
+
+// Convert hex string to byte array. Returns true on success.
+static bool hexToBytes(const String& hex, uint8_t* out, size_t outLen) {
+    if (hex.length() != outLen * 2) return false;
+    for (size_t i = 0; i < outLen; i++) {
+        char hi = hex.charAt(i * 2);
+        char lo = hex.charAt(i * 2 + 1);
+        auto nib = [](char c) -> int {
+            if (c >= '0' && c <= '9') return c - '0';
+            if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
+            if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
+            return -1;
+        };
+        int h = nib(hi), l = nib(lo);
+        if (h < 0 || l < 0) return false;
+        out[i] = (uint8_t)((h << 4) | l);
+    }
+    return true;
+}
+
+static void bytesToHex(const uint8_t* in, size_t len, char* out) {
+    static const char* HEX_CHARS = "0123456789abcdef";
+    for (size_t i = 0; i < len; i++) {
+        out[i * 2]     = HEX_CHARS[(in[i] >> 4) & 0x0F];
+        out[i * 2 + 1] = HEX_CHARS[in[i] & 0x0F];
+    }
+    out[len * 2] = '\0';
+}
+
+// Compute HMAC-SHA256 over (prefix || data). Writes 64 hex chars + NUL.
+static bool computeHmacHex(const uint8_t* key, size_t keyLen,
+                           const char* prefix, size_t prefixLen,
+                           const char* data,   size_t dataLen,
+                           char* sigHexOut) {
+    const mbedtls_md_info_t* mdInfo = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    if (!mdInfo) return false;
+    mbedtls_md_context_t ctx;
+    mbedtls_md_init(&ctx);
+    if (mbedtls_md_setup(&ctx, mdInfo, 1 /* HMAC */) != 0) {
+        mbedtls_md_free(&ctx);
+        return false;
+    }
+    uint8_t mac[32];
+    int rc = mbedtls_md_hmac_starts(&ctx, key, keyLen);
+    if (rc == 0) rc = mbedtls_md_hmac_update(&ctx, (const uint8_t*)prefix, prefixLen);
+    if (rc == 0) rc = mbedtls_md_hmac_update(&ctx, (const uint8_t*)data, dataLen);
+    if (rc == 0) rc = mbedtls_md_hmac_finish(&ctx, mac);
+    mbedtls_md_free(&ctx);
+    if (rc != 0) return false;
+    bytesToHex(mac, sizeof(mac), sigHexOut);
+    return true;
+}
+
+// Get wall-clock time as seconds + microseconds since the Unix epoch.
+// Returns false if NTP hasn't synced yet (year < 2020).
+static bool getEpochTime(unsigned long* secOut, unsigned long* usecOut) {
+    struct timeval tv;
+    if (gettimeofday(&tv, nullptr) != 0) return false;
+    if (tv.tv_sec < 1577836800UL /* 2020-01-01 */) return false;
+    *secOut  = (unsigned long)tv.tv_sec;
+    *usecOut = (unsigned long)tv.tv_usec;
+    return true;
+}
 
 // ======================================================================
 // MANIFEST FOR E-LAB
@@ -245,18 +363,54 @@ void discoverServer() {
            
             if (!error) {
                 if (doc["service"] == "elab-dispatcher") {
-                    // The server sends "ips" as an array; take the first address.
-                    if (doc["ips"].is<JsonArray>() && doc["ips"].size() > 0) {
-                        serverIP = doc["ips"][0].as<String>();
-                    } else {
-                        serverIP = udp.remoteIP().toString(); // Fall back to the sender IP.
+                    serverIPCount = 0;
+                    currentServerIPIndex = 0;
+                    
+                    // Parse the IP list sent by the server.
+                    if (doc["ips"].is<JsonArray>()) {
+                        JsonArray ips = doc["ips"].as<JsonArray>();
+                        for (JsonVariant ip : ips) {
+                            if (serverIPCount < 10) {
+                                String ipStr = ip.as<String>();
+                                if (ipStr != "127.0.0.1" && ipStr != "localhost") {
+                                    serverIPs[serverIPCount++] = ipStr;
+                                }
+                            }
+                        }
                     }
+                    
+                    // Append the actual packet sender IP as a candidate if not already present
+                    String remoteIPStr = udp.remoteIP().toString();
+                    bool remoteIPExists = false;
+                    for (int i = 0; i < serverIPCount; i++) {
+                        if (serverIPs[i] == remoteIPStr) {
+                            remoteIPExists = true;
+                            break;
+                        }
+                    }
+                    if (!remoteIPExists && serverIPCount < 10) {
+                        serverIPs[serverIPCount++] = remoteIPStr;
+                    }
+                    
+                    // If no valid external IPs were found, include the loopback address as a last resort
+                    if (serverIPCount == 0) {
+                        serverIPs[serverIPCount++] = "127.0.0.1";
+                    }
+                    
+                    serverIP = serverIPs[0];
                     serverPort = doc["port"].as<uint16_t>();
                     serverFound = true;
                     Serial.printf("[DISCOVERY] -> e_Lab Dispatcher GEFUNDEN: %s:%d (Version: %s, Protocol: %s)\n", 
                                   serverIP.c_str(), serverPort, 
                                   doc["version"].as<String>().c_str(), 
                                   doc["protocol"].as<String>().c_str());
+                                  
+                    Serial.print("[DISCOVERY] IP-Kandidaten: ");
+                    for (int i = 0; i < serverIPCount; i++) {
+                        Serial.printf("%s%s", serverIPs[i].c_str(), (i == serverIPCount - 1) ? "" : ", ");
+                    }
+                    Serial.println();
+                    
                     udp.stop();
                     udpBegun = false;
                 } else {
@@ -305,6 +459,30 @@ void socketIOEvent(socketIOmessageType_t type, uint8_t * payload, size_t length)
                 Serial.println("\n[ERROR] Das e_Lab hat die Registrierung ABGELEHNT!");
                 String errorMsg = doc[1]["message"].as<String>();
                 Serial.printf("        Grund: %s\n", errorMsg.c_str());
+            }
+            // --- Pairing flow ---------------------------------------------
+            else if (eventName == "registration_pending") {
+                Serial.println("\n[AUTH] Geraet wartet auf Operator-Freigabe in der Workbench (Kategorie 'Registrierung').");
+            }
+            else if (eventName == "registration_approved") {
+                JsonObject payloadObj = doc[1];
+                String dev    = payloadObj["deviceId"].as<String>();
+                String secret = payloadObj["secret"].as<String>();
+                if (dev == DEVICE_ID && secret.length() == 64) {
+                    hmacSecretHex = secret;
+                    isApproved = true;
+                    saveSecret(secret);
+                    Serial.println("\n[AUTH] Pairing erfolgreich! Secret in NVS gespeichert.");
+                } else {
+                    Serial.printf("\n[AUTH] registration_approved fuer fremdes Device ignoriert (%s).\n", dev.c_str());
+                }
+            }
+            else if (eventName == "registration_revoked") {
+                JsonObject payloadObj = doc[1];
+                String dev = payloadObj["deviceId"].as<String>();
+                if (dev == DEVICE_ID) {
+                    clearSecret();
+                }
             }
             else if (eventName == "execute_command") {
                 JsonObject commandData = doc[1];
@@ -593,10 +771,21 @@ static void sendDataChunkToELab(uint8_t* buffer, int numValues,
                                 const char* sourceId,
                                 unsigned long startTimeMs,
                                 unsigned long endTimeMs) {
+    // Drop everything until the operator has approved this device. The
+    // server would discard unsigned packets anyway, so don't waste WiFi.
+    if (!isApproved || hmacSecretHex.length() != 64) {
+        static unsigned long lastWarn = 0;
+        if (millis() - lastWarn > 5000) {
+            Serial.println("[STREAM] Geraet noch nicht freigegeben \u2014 verwerfe Daten.");
+            lastWarn = millis();
+        }
+        return;
+    }
+
     // Two bytes per uint16 value.
     int numBytes = numValues * 2;
-    // Buffer size: header plus up to 4 chars per byte ("255,") and the trailer.
-    size_t needed = 256 + ((size_t)numBytes * 4);
+    // Buffer size: header plus up to 4 chars per byte ("255,"), auth block, trailer.
+    size_t needed = 512 + ((size_t)numBytes * 4);
 
     // Grow the static buffer on demand.
     if (txBuffer == nullptr || txBufferSize < needed) {
@@ -610,16 +799,25 @@ static void sendDataChunkToELab(uint8_t* buffer, int numValues,
         txBufferSize = needed;
     }
 
-    // Build the JSON header manually.
-    int pos = snprintf(txBuffer, txBufferSize,
-        "[\"data_stream\",{\"sourceId\":\"%s\",\"distribution\":\"linear\","
-        "\"startTime\":%lu,\"endTime\":%lu,\"raw_bytes\":[",
-        sourceId, startTimeMs, endTimeMs);
+    // --- Build the wrapper + inner payload in CANONICAL key order -------
+    // We need the inner object exactly the way Python's json.dumps(...,
+    // sort_keys=True, separators=(",", ":")) would emit it, otherwise the
+    // HMAC won't match server-side.
+    //
+    // Canonical inner keys (alphabetical): distribution, endTime,
+    // raw_bytes, sourceId, startTime. The auth block is appended *after*
+    // signing and intentionally violates alphabetical order \u2014 the server
+    // strips it before re-canonicalizing.
+    const char wrapperPrefix[] = "[\"data_stream\",";
+    const size_t innerStart = sizeof(wrapperPrefix) - 1;  // index of inner '{'
 
-    // Write the byte buffer directly as an integer array.
+    int pos = snprintf(txBuffer, txBufferSize,
+        "%s{\"distribution\":\"linear\",\"endTime\":%lu,\"raw_bytes\":[",
+        wrapperPrefix, endTimeMs);
+
+    // Write byte array (decimal integers separated by ',').
     for (int i = 0; i < numBytes; i++) {
         if (i > 0) txBuffer[pos++] = ',';
-        // Inline integer-to-string conversion for values 0-255.
         uint8_t val = buffer[i];
         if (val >= 100) {
             txBuffer[pos++] = '0' + (val / 100);
@@ -633,8 +831,50 @@ static void sendDataChunkToELab(uint8_t* buffer, int numValues,
         }
     }
 
-    // Append the JSON trailer.
-    pos += snprintf(txBuffer + pos, txBufferSize - pos, "]}]");
+    // Close raw_bytes and append remaining canonical keys, then close the
+    // inner object. After this, the bytes at [innerStart .. pos) ARE the
+    // canonical inner JSON.
+    pos += snprintf(txBuffer + pos, txBufferSize - pos,
+        "],\"sourceId\":\"%s\",\"startTime\":%lu}",
+        sourceId, startTimeMs);
+
+    // --- Compute HMAC over (ts\n + canonical inner JSON) ----------------
+    unsigned long tsSec = 0, tsUsec = 0;
+    if (!getEpochTime(&tsSec, &tsUsec)) {
+        // NTP not synced yet \u2014 don't ship an unsignable packet.
+        static unsigned long lastWarn = 0;
+        if (millis() - lastWarn > 5000) {
+            Serial.println("[AUTH] NTP-Zeit noch nicht synchron \u2014 verwerfe Frame.");
+            lastWarn = millis();
+        }
+        return;
+    }
+    char tsBuf[32];
+    int tsLen = snprintf(tsBuf, sizeof(tsBuf), "%lu.%06lu\n", tsSec, tsUsec);
+
+    uint8_t keyBytes[32];
+    if (!hexToBytes(hmacSecretHex, keyBytes, sizeof(keyBytes))) {
+        Serial.println("[AUTH] Secret in NVS korrupt \u2014 loesche und fordere neues Pairing an.");
+        clearSecret();
+        return;
+    }
+
+    char sigHex[65];
+    if (!computeHmacHex(keyBytes, sizeof(keyBytes),
+                        tsBuf, (size_t)tsLen,
+                        txBuffer + innerStart, (size_t)(pos - innerStart),
+                        sigHex)) {
+        Serial.println("[AUTH] HMAC-Berechnung fehlgeschlagen \u2014 verwerfe Frame.");
+        return;
+    }
+
+    // Splice the auth block in: rewind the closing '}' of the inner
+    // object, append ',"auth":{"sig":"<hex>","ts":TS.NNNNNN}}' followed by
+    // the wrapper's closing ']'.
+    pos -= 1;  // drop trailing '}'
+    pos += snprintf(txBuffer + pos, txBufferSize - pos,
+        ",\"auth\":{\"sig\":\"%s\",\"ts\":%lu.%06lu}}]",
+        sigHex, tsSec, tsUsec);
 
     socketIO.sendEVENT(txBuffer, pos);
 }
@@ -705,7 +945,31 @@ void setup() {
     Serial.println("\n[WLAN] Erfolgreich verbunden!");
     Serial.printf("[WLAN] Zugewiesene IP-Adresse: %s\n", WiFi.localIP().toString().c_str());
     Serial.printf("[WLAN] Signalstärke (RSSI): %d dBm\n", WiFi.RSSI());
-   
+
+    // --- Time sync via SNTP --------------------------------------------
+    // The HMAC timestamp must be wall-clock epoch seconds within the
+    // server's accepted skew window (5 min), so we need NTP before we can
+    // sign any data_stream packet.
+    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+    Serial.println("[SNTP] Warte auf Zeitsynchronisation...");
+    {
+        time_t now = 0;
+        int waited = 0;
+        while ((now = time(nullptr)) < 1577836800UL /* 2020 */ && waited < 20) {
+            delay(500);
+            Serial.print(".");
+            waited++;
+        }
+        if (now < 1577836800UL) {
+            Serial.println("\n[SNTP] WARNUNG: keine Zeit synchronisiert (Frames werden vorerst verworfen).");
+        } else {
+            Serial.printf("\n[SNTP] OK: %ld\n", (long)now);
+        }
+    }
+
+    // --- Load cached pairing secret (if any) ---------------------------
+    loadStoredSecret();
+
     currentState = DISCOVERY;
 }
 
@@ -731,8 +995,17 @@ void loop() {
                 Serial.println("[SIO] Max. Reconnect-Versuche erreicht. Starte Neustart...");
                 ESP.restart();
             }
-            Serial.printf("[SIO] Reconnect-Versuch %d/%d (Backoff: %lu ms)...\n",
-                          reconnectAttempt, MAX_RECONNECT_ATTEMPTS, backoffMs);
+            
+            // Switch to the next candidate IP if multiple are available
+            if (serverIPCount > 1) {
+                currentServerIPIndex = (currentServerIPIndex + 1) % serverIPCount;
+                serverIP = serverIPs[currentServerIPIndex];
+                Serial.printf("[SIO] Wechsle zu IP-Kandidat: %s (Index %d/%d)\n", 
+                              serverIP.c_str(), currentServerIPIndex + 1, serverIPCount);
+            }
+            
+            Serial.printf("[SIO] Reconnect-Versuch %d/%d (Backoff: %lu ms) mit %s:%d...\n",
+                          reconnectAttempt, MAX_RECONNECT_ATTEMPTS, backoffMs, serverIP.c_str(), serverPort);
             socketIO.begin(serverIP, serverPort, "/socket.io/?EIO=4");
             socketIO.onEvent(socketIOEvent);
             reconnectStartTime = millis();

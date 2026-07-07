@@ -139,7 +139,10 @@ def main():
     recorder = SessionRecorder(state, socketio)
     replayer = SessionReplayer(socketio)
     replayer.start()
-    client_manager = ClientProcessManager()
+    client_manager = ClientProcessManager(
+        auth_state=state,
+        extra_dirs=[os.path.join("elab_clients_premium", "python", "clients")],
+    )
 
     # Register all socket handlers
     register_socket_handlers(socketio, state, recorder, replayer, client_manager)

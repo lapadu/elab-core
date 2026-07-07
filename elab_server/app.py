@@ -126,12 +126,25 @@ def get_ip_addresses():
     ips = set()
     try:
         hostname = socket.gethostname()
-        _, _, ip_list = socket.gethostbyname_ex(hostname)
-        for addr in ip_list:
+        # Use getaddrinfo to retrieve IPs as it is more robust on Windows
+        addr_info = socket.getaddrinfo(hostname, None, socket.AF_INET)
+        for item in addr_info:
+            addr = item[4][0]
             if not addr.startswith("127."):
                 ips.add(addr)
     except (socket.gaierror, OSError):
         pass
+
+    # Fallback to gethostbyname_ex if getaddrinfo had issues or returned nothing
+    if not ips:
+        try:
+            hostname = socket.gethostname()
+            _, _, ip_list = socket.gethostbyname_ex(hostname)
+            for addr in ip_list:
+                if not addr.startswith("127."):
+                    ips.add(addr)
+        except (socket.gaierror, OSError):
+            pass
 
     primary_ip = None
     try:
@@ -154,3 +167,4 @@ def get_ip_addresses():
 
     sorted_ips.append("127.0.0.1")
     return sorted_ips
+

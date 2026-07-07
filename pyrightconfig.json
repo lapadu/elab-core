@@ -5,8 +5,10 @@
   "include": [
     "elab_server",
     "elab_clients_core",
+    "elab_clients_premium",
     "elab_api",
     "elab_bridge",
+    "tests",
     "server.py",
     "tools/log_viewer.py"
   ]

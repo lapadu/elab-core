@@ -11,6 +11,7 @@ export const useDispatcherSubscription = (serverUrl) => {
   const [providers, setProviders] = useState([]);
   const [offlineProviders, setOfflineProviders] = useState(new Set());
   const [availableScripts, setAvailableScripts] = useState([]);
+  const [pendingDevices, setPendingDevices] = useState([]);
   const [streamBuffers] = useState(() => new Map());
 
   const providerUpdateTimeout = useRef(null);
@@ -35,6 +36,7 @@ export const useDispatcherSubscription = (serverUrl) => {
     const handleDisconnect = () => setIsConnected(false);
     const handleSession = (status) => setSessionState(status);
     const handleScripts = (scripts) => setAvailableScripts(scripts);
+    const handlePending = (list) => setPendingDevices(Array.isArray(list) ? list : []);
 
     const handleProviders = (newProviders) => {
       if (providerUpdateTimeout.current) clearTimeout(providerUpdateTimeout.current);
@@ -52,13 +54,27 @@ export const useDispatcherSubscription = (serverUrl) => {
             );
           }
         }
-        setProviders(newProviders);
+        // Shallow-compare against the previous list to avoid creating a new
+        // array identity (and re-triggering every downstream useMemo) when
+        // the dispatcher re-emits an unchanged provider list.
+        setProviders((prev) => {
+          const next = Array.isArray(newProviders) ? newProviders : [];
+          if (Array.isArray(prev) && prev.length === next.length) {
+            let changed = false;
+            for (let i = 0; i < next.length; i += 1) {
+              if (prev[i] !== next[i]) { changed = true; break; }
+            }
+            if (!changed) return prev;
+          }
+          return next;
+        });
         setOfflineProviders(prev => {
           const next = new Set(prev);
-          newProviders.forEach(p => {
-            if (next.has(p.id)) next.delete(p.id);
+          let mutated = false;
+          (newProviders || []).forEach(p => {
+            if (next.has(p.id)) { next.delete(p.id); mutated = true; }
           });
-          return next;
+          return mutated ? next : prev;
         });
       }, 200);
     };
@@ -91,6 +107,7 @@ export const useDispatcherSubscription = (serverUrl) => {
     dispatcher.on(APP_EVENTS.ON_DATA_STREAM, handleStream);
     dispatcher.on(APP_EVENTS.ON_SESSION_STATUS, handleSession);
     dispatcher.on(APP_EVENTS.ON_SCRIPTS_UPDATE, handleScripts);
+    dispatcher.on(APP_EVENTS.ON_PENDING_DEVICES, handlePending);
 
     return () => {
       dispatcher.off(APP_EVENTS.ON_CONNECTION_ESTABLISHED, handleConnect);
@@ -100,6 +117,7 @@ export const useDispatcherSubscription = (serverUrl) => {
       dispatcher.off(APP_EVENTS.ON_DATA_STREAM, handleStream);
       dispatcher.off(APP_EVENTS.ON_SESSION_STATUS, handleSession);
       dispatcher.off(APP_EVENTS.ON_SCRIPTS_UPDATE, handleScripts);
+      dispatcher.off(APP_EVENTS.ON_PENDING_DEVICES, handlePending);
       
       dispatcher.disconnect();
     };
@@ -112,9 +130,15 @@ export const useDispatcherSubscription = (serverUrl) => {
     providers,
     offlineProviders,
     availableScripts,
+    pendingDevices,
     clearStreamBuffers,
     // Delegate directly to the dispatcher helpers.
     startScript: (filename) => dispatcher.startClientScript(filename),
     stopScript: (filename) => dispatcher.stopClientScript(filename),
+    approvePendingDevice: (deviceId, manifestHash) =>
+      dispatcher.approvePendingDevice(deviceId, manifestHash),
+    revokeDevice: (deviceId) => dispatcher.revokeDevice(deviceId),
+    deleteDeviceCredential: (deviceId) =>
+      dispatcher.deleteDeviceCredential(deviceId),
   };
 };

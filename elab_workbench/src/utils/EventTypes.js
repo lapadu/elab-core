@@ -24,6 +24,9 @@ export const SOCKET_EVENTS = {
   TASK_REJECTED: 'task_rejected',
   ACTIVE_TASKS_SNAPSHOT: 'active_tasks_snapshot',
 
+  // Provider pairing (Trust-on-First-Use)
+  PENDING_DEVICES: 'pending_devices',
+
   // --- Outgoing (Client -> Server) ---
   REGISTER_CLIENT: 'register_client',
   TASK_REQUEST: 'task_request',
@@ -49,7 +52,13 @@ export const SOCKET_EVENTS = {
 
   // Task Subscriptions
   SUBSCRIBE_TASK: 'subscribe_task',
-  UNSUBSCRIBE_TASK: 'unsubscribe_task'
+  UNSUBSCRIBE_TASK: 'unsubscribe_task',
+
+  // Pairing controls
+  GET_PENDING_DEVICES: 'get_pending_devices',
+  APPROVE_PENDING_DEVICE: 'approve_pending_device',
+  REVOKE_DEVICE: 'revoke_device',
+  DELETE_DEVICE_CREDENTIAL: 'delete_device_credential'
 };
 
 // Internal app events forwarded by the dispatcher to React hooks.
@@ -78,5 +87,8 @@ export const APP_EVENTS = {
   ON_SESSION_LIST: 'onSessionList',
   ON_RECORDED_PROVIDERS: 'onRecordedProviders',
   ON_TASK_REJECTED: 'onTaskRejected',
-  ON_ACTIVE_TASKS_SNAPSHOT: 'onActiveTasksSnapshot'
+  ON_ACTIVE_TASKS_SNAPSHOT: 'onActiveTasksSnapshot',
+
+  // Pairing (Trust-on-First-Use)
+  ON_PENDING_DEVICES: 'onPendingDevices'
 };

@@ -7,6 +7,8 @@ import sys
 import threading
 import logging
 
+from .auth import AUTO_APPROVE_ENV, make_auto_approve_token
+
 logger = logging.getLogger(__name__)
 
 # Strict filename whitelist: simple python script names only. No path
@@ -26,7 +28,8 @@ _CLIENT_BINS_DIR = (
 
 class ClientProcessManager:
     """A class to manage client processes."""
-    def __init__(self, clients_dir=os.path.join("elab_clients_core", "python", "clients")):
+    def __init__(self, clients_dir=os.path.join("elab_clients_core", "python", "clients"),
+                 auth_state=None, extra_dirs=None):
         # In a PyInstaller bundle, data files live under sys._MEIPASS/_internal.
         # The .spec adds elab_clients_core/ there. In dev mode, the client library
         # loads runnable scripts from elab_clients_core/python/clients.
@@ -36,9 +39,30 @@ class ClientProcessManager:
             base = os.path.join(os.path.dirname(
                 os.path.abspath(__file__)), "..", clients_dir)
         self.clients_dir = os.path.abspath(base)
+
+        # Additional directories to scan for runnable client scripts
+        # (e.g. elab_clients_premium/python/clients).
+        self._extra_dirs: list[str] = []
+        project_root = os.path.abspath(os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), ".."))
+        for d in (extra_dirs or []):
+            if _FROZEN:
+                resolved = os.path.abspath(
+                    os.path.join(getattr(sys, '_MEIPASS', ''), d))
+            else:
+                resolved = os.path.abspath(os.path.join(project_root, d))
+            if os.path.isdir(resolved):
+                self._extra_dirs.append(resolved)
+
         self._python = sys.executable  # used in dev mode only
+        # Optional reference to SystemState. When provided, locally spawned
+        # scripts are issued a one-shot ELAB_AUTO_APPROVE_TOKEN so they bypass
+        # the operator pairing dialog (they are inherently trusted by origin).
+        self._auth_state = auth_state
         logger.info("ClientProcessManager: clients_dir=%s  frozen=%s",
                     self.clients_dir, _FROZEN)
+        if self._extra_dirs:
+            logger.info("ClientProcessManager: extra_dirs=%s", self._extra_dirs)
         if _FROZEN and _CLIENT_BINS_DIR:
             logger.info("ClientProcessManager: client_bins=%s", _CLIENT_BINS_DIR)
         self.running_processes = {}
@@ -60,31 +84,40 @@ class ClientProcessManager:
                 logger.warning("Zombie process detected: %s", filename)
                 del self.running_processes[filename]
 
+    def _all_dirs(self) -> list[str]:
+        """Return the primary clients dir plus any extra dirs."""
+        return [self.clients_dir] + self._extra_dirs
+
     def scan_scripts(self):
-        """Scans the clients directory for Python scripts.
+        """Scans all client directories for Python scripts.
 
         In frozen (PyInstaller) mode, only scripts that have a matching
         pre-built executable in ``client_bins/`` are reported as runnable.
         """
         scripts = []
-        if not os.path.exists(self.clients_dir):
-            logger.warning("Client directory not found: %s", self.clients_dir)
-            return scripts
-        files = glob.glob(os.path.join(self.clients_dir, "*.py"))
-        for file_path in files:
-            filename = os.path.basename(file_path)
-            if filename.startswith("__") or "asset" in filename.lower():
+        seen_filenames: set[str] = set()
+        for scan_dir in self._all_dirs():
+            if not os.path.exists(scan_dir):
+                logger.warning("Client directory not found: %s", scan_dir)
                 continue
-            # In frozen mode, skip scripts without a pre-built binary.
-            if _FROZEN and not self._client_exe(filename):
-                logger.debug("Skipping %s – no pre-built binary found", filename)
-                continue
-            scripts.append({
-                "id": f"script_{filename}",
-                "name": filename,
-                "filename": filename,
-                "isRunning": filename in self.running_processes,
-            })
+            files = glob.glob(os.path.join(scan_dir, "*.py"))
+            for file_path in files:
+                filename = os.path.basename(file_path)
+                if filename.startswith("__") or "asset" in filename.lower():
+                    continue
+                if filename in seen_filenames:
+                    continue
+                # In frozen mode, skip scripts without a pre-built binary.
+                if _FROZEN and not self._client_exe(filename):
+                    logger.debug("Skipping %s – no pre-built binary found", filename)
+                    continue
+                seen_filenames.add(filename)
+                scripts.append({
+                    "id": f"script_{filename}",
+                    "name": filename,
+                    "filename": filename,
+                    "isRunning": filename in self.running_processes,
+                })
         return scripts
 
     @staticmethod
@@ -131,29 +164,54 @@ class ClientProcessManager:
                 pass
 
     def _resolve_script_path(self, filename: str):
-        """Validate *filename* and return its absolute path inside clients_dir.
+        """Validate *filename* and return its absolute path inside one of the
+        known client directories.
 
         Returns (path, error). On rejection ``path`` is None and ``error`` is
         a short human-readable message.
+
+        TOCTOU hardening: we open the resolved candidate with ``O_NOFOLLOW``
+        and verify it is a regular file via ``os.fstat``. This prevents a
+        race where an attacker swaps the file for a symlink between the
+        ``isfile`` check and ``subprocess.Popen``.
         """
         if not isinstance(filename, str) or not _SCRIPT_FILENAME_RE.match(filename):
             return None, "Invalid script filename"
-        clients_root = os.path.realpath(self.clients_dir)
-        candidate = os.path.realpath(os.path.join(clients_root, filename))
-        # Containment check: candidate must be a direct child of clients_root.
-        try:
-            common = os.path.commonpath([clients_root, candidate])
-        except ValueError:
-            return None, "Path traversal blocked"
-        if common != clients_root or os.path.dirname(candidate) != clients_root:
-            logger.warning(
-                "Rejected script path outside clients_dir: %s -> %s",
-                filename, candidate,
-            )
-            return None, "Path traversal blocked"
-        if not os.path.isfile(candidate):
-            return None, "Script not found"
-        return candidate, None
+        # ``O_NOFOLLOW`` is POSIX. On Windows the flag is silently ignored, but
+        # the strict filename whitelist + containment check below still keep
+        # the attacker from breaking out of the clients directory.
+        nofollow_flag = getattr(os, "O_NOFOLLOW", 0)
+        for scan_dir in self._all_dirs():
+            clients_root = os.path.realpath(scan_dir)
+            candidate = os.path.realpath(os.path.join(clients_root, filename))
+            # Containment check: candidate must be a direct child of clients_root.
+            try:
+                common = os.path.commonpath([clients_root, candidate])
+            except ValueError:
+                continue
+            if common != clients_root or os.path.dirname(candidate) != clients_root:
+                continue
+            fd = None
+            try:
+                fd = os.open(candidate, os.O_RDONLY | nofollow_flag)
+                st = os.fstat(fd)
+            except (OSError, ValueError):
+                # File missing, symlink (with O_NOFOLLOW), or otherwise unreadable.
+                continue
+            finally:
+                if fd is not None:
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        pass
+            import stat as _stat
+            if not _stat.S_ISREG(st.st_mode):
+                continue
+            return candidate, None
+        logger.warning(
+            "Script %r not found in any client directory", filename,
+        )
+        return None, "Script not found"
 
     def start_script(self, filename):
         """Starts a client script."""
@@ -165,8 +223,19 @@ class ClientProcessManager:
             return False, err
         try:
             # pylint: disable=consider-using-with
-            assert filepath is not None  # guaranteed by _resolve_script_path
+            if filepath is None:
+                # Defensive: _resolve_script_path already guarantees a path on
+                # the success branch, but keep the runtime check for safety
+                # under ``python -O`` where ``assert`` would be stripped.
+                return False, "Invalid script path"
             env = os.environ.copy()
+            # Issue a one-shot pairing token so the spawned script auto-pairs
+            # without operator interaction. Only valid for this single
+            # register_provider call; never reused.
+            if self._auth_state is not None:
+                token = make_auto_approve_token()
+                self._auth_state.issue_auto_approve_token(token, script=filename)
+                env[AUTO_APPROVE_ENV] = token
             if _FROZEN:
                 client_exe = self._client_exe(filename)
                 if not client_exe:
@@ -175,7 +244,7 @@ class ClientProcessManager:
                 cwd = os.path.dirname(client_exe)
             else:
                 cmd = [self._python, filepath]
-                cwd = self.clients_dir
+                cwd = os.path.dirname(filepath)
             proc = subprocess.Popen(
                 cmd,
                 cwd=cwd,

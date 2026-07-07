@@ -43,7 +43,7 @@ function remapTaskReference(savedObj, templateSlots, loadedSlots) {
   return remapped;
 }
 
-const SERVER_URL = `http://${window.location.hostname}:5000`;
+const SERVER_URL = window.location.origin;
 
 // Manually register the core plugin for recorded tasks
 PLUGIN_REGISTRY[RecordedTaskPlugin.id] = RecordedTaskPlugin;
@@ -58,8 +58,11 @@ export default function App() {
     providers, 
     offlineProviders,
     availableScripts,
+    pendingDevices,
     startScript,
     stopScript,
+    approvePendingDevice,
+    revokeDevice,
     clearStreamBuffers,
   } = useDispatcherSubscription(SERVER_URL);
 
@@ -77,6 +80,40 @@ export default function App() {
     slotsRef.current = slots;
   }, [slots]);
 
+  useEffect(() => {
+    // Check if we are running as the public website (or local testing with query parameter)
+    const isWebsite = 
+      window.location.hostname.includes('e-lab.app') || 
+      window.location.hostname.includes('github.io') || 
+      window.location.search.includes('website=true') ||
+      window.location.search.includes('demo=true');
+
+    if (isWebsite && !slotsRef.current[1]) {
+      const projectInfoTask = {
+        id: 'website_project_info_widget',
+        groupId: 'website_project_info',
+        name: 'e_Lab Project Info',
+        virtual: true,
+        type: 'UI_TEMPLATE',
+        config: {},
+        ui: {
+          mode: "generic",
+          defaultTemplate: "website_project_info",
+          views: [
+            {
+              id: "info",
+              label: "Info",
+              icon: "Info",
+              template: "website_project_info",
+            }
+          ]
+        }
+      };
+      // Load the info widget into the upper right quadrant (slot index 1)
+      dispatchSlots({ type: 'DROP_TASK', index: 1, baseTask: projectInfoTask });
+    }
+  }, [dispatchSlots]);
+
   // Snapshot delivered by the server right after register_client. Held until
   // the providers list arrives so we can resolve task ids to instances.
   const pendingSnapshotRef = useRef(null);
@@ -85,6 +122,8 @@ export default function App() {
   const [layout, setLayout] = useState('grid-2x2');
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isFlowOpen, setIsFlowOpen] = useState(false);
+  const [touchDragState, setTouchDragState] = useState(null);
+  const [touchDropTarget, setTouchDropTarget] = useState(null);
   
   // --- SESSION/REPLAY STATE MANAGEMENT ---
   const [sessionName, setSessionName] = useState('');
@@ -315,19 +354,20 @@ export default function App() {
       const val = parseFloat(e.target.value);
       setSeekValue(val);
 
-      // Throttle live scrubbing so seek traffic stays responsive.
+      // Coalesce live scrubbing onto the next animation frame so the slider
+      // stays smooth and we don't fire one socket emit per pointermove.
       if (seekThrottle.current) {
-          clearTimeout(seekThrottle.current);
+          cancelAnimationFrame(seekThrottle.current);
       }
-      seekThrottle.current = setTimeout(() => {
+      seekThrottle.current = requestAnimationFrame(() => {
           handleReplayControl('seek', val);
-      }, 50); // Lower throttling keeps scrubbing feeling responsive.
+      });
     };
 
     const handleSeekMouseUp = (e) => {
         // Ensure the final slider value is sent.
         if (seekThrottle.current) {
-            clearTimeout(seekThrottle.current);
+            cancelAnimationFrame(seekThrottle.current);
         }
         const val = parseFloat(e.target.value);
         handleReplayControl('seek', val);
@@ -464,7 +504,7 @@ export default function App() {
         case 'grid-2x2':
           return { slots: [0, 1, 2, 3], gridClass: 'grid grid-cols-2 grid-rows-2' };
         case 'grid-pro':
-          return { slots: [0, 1, 2, 3, 4, 5], gridClass: 'grid grid-cols-3 grid-rows-2' };
+          return { slots: [0, 1, 2, 3, 4, 5], gridClass: 'grid grid-cols-2 md:grid-cols-3 grid-rows-3 md:grid-rows-2' };
         case 'grid-5x1':
           return { slots: [0, 1, 2, 3, 4, 5], gridClass: 'grid-5x1-layout' };
         default:
@@ -473,15 +513,93 @@ export default function App() {
     };
     const { slots: activeSlots, gridClass } = getLayoutConfig();
   
+    const placeTaskInSlot = useCallback((index, task) => {
+      dispatchSlots({ type: 'DROP_TASK', index, baseTask: task });
+      dispatcher.assignTaskToSlot(index, task.id);
+    }, [dispatchSlots]);
+
+    const bindTaskToMeasureSlot = useCallback((slotIndex, droppedTask) => {
+      const currentTask = slotsRef.current[slotIndex];
+      if (!currentTask || currentTask.type !== 'MEASURE' || droppedTask.id === currentTask.id) {
+        return;
+      }
+
+      if (!currentTask.inputs?.source) {
+        dispatchSlots({
+          type: 'UPDATE_TASK',
+          index: slotIndex,
+          task: { ...currentTask, inputs: { ...currentTask.inputs, source: droppedTask } },
+        });
+        return;
+      }
+
+      const extra = currentTask.extraChannels || [];
+      if (extra.find(channel => channel.id === droppedTask.id)) {
+        return;
+      }
+
+      dispatchSlots({
+        type: 'UPDATE_TASK',
+        index: slotIndex,
+        task: { ...currentTask, extraChannels: [...extra, droppedTask] },
+      });
+    }, [dispatchSlots]);
+
+    const resolveTouchDropTargetAtPoint = useCallback((x, y) => {
+      const element = document.elementFromPoint(x, y);
+      const measureElement = element?.closest?.('[data-widget-slot-index][data-widget-type="MEASURE"]');
+      if (measureElement) {
+        const slotIndex = Number(measureElement.getAttribute('data-widget-slot-index'));
+        return Number.isInteger(slotIndex) ? { kind: 'measure', slotIndex } : null;
+      }
+
+      const slotElement = element?.closest?.('[data-slot-index]');
+      if (!slotElement) return null;
+
+      const slotIndex = Number(slotElement.getAttribute('data-slot-index'));
+      return Number.isInteger(slotIndex) ? { kind: 'slot', slotIndex } : null;
+    }, []);
+
     const handleDropOnSlot = useCallback((e, index) => {
       e.preventDefault();
       const dataStr = e.dataTransfer.getData('task');
-      if (dataStr) {
-        const task = JSON.parse(dataStr);
-        dispatchSlots({ type: 'DROP_TASK', index, baseTask: task });
-        dispatcher.assignTaskToSlot(index, task.id);
-      }
-    }, [dispatchSlots]);
+      if (!dataStr) return;
+
+      const task = JSON.parse(dataStr);
+      placeTaskInSlot(index, task);
+    }, [placeTaskInSlot]);
+
+    const handleTouchDragStart = useCallback((task, point) => {
+      setTouchDragState({ task, x: point.x, y: point.y });
+      setTouchDropTarget(resolveTouchDropTargetAtPoint(point.x, point.y));
+    }, [resolveTouchDropTargetAtPoint]);
+
+    const handleTouchDragMove = useCallback((point) => {
+      setTouchDragState(prev => {
+        if (!prev) return prev;
+        return { ...prev, x: point.x, y: point.y };
+      });
+      setTouchDropTarget(resolveTouchDropTargetAtPoint(point.x, point.y));
+    }, [resolveTouchDropTargetAtPoint]);
+
+    const handleTouchDragEnd = useCallback((point) => {
+      setTouchDragState(prev => {
+        if (!prev) return null;
+        const target = resolveTouchDropTargetAtPoint(point.x, point.y);
+        if (target?.kind === 'measure') {
+          bindTaskToMeasureSlot(target.slotIndex, prev.task);
+        } else if (target?.kind === 'slot') {
+          placeTaskInSlot(target.slotIndex, prev.task);
+        }
+        return null;
+      });
+      setTouchDropTarget(null);
+    }, [bindTaskToMeasureSlot, placeTaskInSlot, resolveTouchDropTargetAtPoint]);
+
+    const handleTouchDragCancel = useCallback(() => {
+      setTouchDragState(null);
+      setTouchDropTarget(null);
+    }, []);
 
     const handleRemoveTask = useCallback((index) => {
       const task = slotsRef.current[index];
@@ -603,24 +721,31 @@ export default function App() {
     }, [availableTaskMap, dispatchSlots]);
 
     return (
-      <div className="flex h-screen bg-slate-950 text-slate-200 font-sans overflow-hidden select-none">
+      <div className="flex h-dvh md:h-screen flex-col md:flex-row bg-slate-950 text-slate-200 font-sans overflow-hidden select-none">
         
-        <div className="w-64 flex flex-col border-r border-slate-800 bg-slate-950 z-20">
+        <div className="w-full md:w-64 max-h-[42dvh] md:max-h-none flex flex-col border-b md:border-b-0 md:border-r border-slate-800 bg-slate-950 z-20 shrink-0">
           <SidebarHeader isConnected={isConnected} />
   
           <div className="flex-1 overflow-y-auto custom-scrollbar">
               <DeviceTree 
                   devices={availableDevices} 
                   scripts={availableScripts}
+                  pendingDevices={pendingDevices}
+                  onApproveDevice={approvePendingDevice}
+                  onRevokeDevice={revokeDevice}
                   onStartScript={startScript}
                   onStopScript={stopScript}
+                  onTouchDragStart={handleTouchDragStart}
+                  onTouchDragMove={handleTouchDragMove}
+                  onTouchDragEnd={handleTouchDragEnd}
+                  onTouchDragCancel={handleTouchDragCancel}
               />
           </div>
         </div>
   
-        <div className="flex-1 flex flex-col relative">
+        <div className="flex-1 min-h-0 flex flex-col relative">
           
-          <div className="h-16 bg-slate-900 border-b border-slate-800 flex items-center px-4 gap-4">
+          <div className="min-h-16 bg-slate-900 border-b border-slate-800 flex items-center flex-wrap px-3 md:px-4 py-2 gap-2 md:gap-4 overflow-x-auto">
             
             <SessionRecorder
               sessionState={sessionState}
@@ -652,7 +777,9 @@ export default function App() {
               onClick={() => setIsFlowOpen(true)}
               className="h-9 px-3 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 flex items-center gap-2 transition-colors"
               title="Dispatch Flow"
-              aria-label="Dispatch Flow oeffnen"
+              aria-label="Dispatch Flow öffnen"
+              aria-expanded={isFlowOpen}
+              aria-controls="elab-dispatch-flow-panel"
             >
               <Icons.Activity size={14} />
               <span className="text-xs font-semibold uppercase tracking-wide">Flow</span>
@@ -663,7 +790,9 @@ export default function App() {
               onClick={() => setIsHelpOpen(true)}
               className="h-9 px-3 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 flex items-center gap-2 transition-colors"
               title="Hilfe"
-              aria-label="Hilfe oeffnen"
+              aria-label="Hilfe öffnen"
+              aria-expanded={isHelpOpen}
+              aria-controls="elab-help-panel"
             >
               <Icons.Info size={14} />
               <span className="text-xs font-semibold uppercase tracking-wide">Hilfe</span>
@@ -671,7 +800,13 @@ export default function App() {
           </div>
 
           {isFlowOpen && (
-            <div className="absolute inset-0 z-[80] bg-slate-950/75 backdrop-blur-sm p-4 md:p-8">
+            <div
+              id="elab-dispatch-flow-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-label={DispatchFlowPlugin.label}
+              className="absolute inset-0 z-[80] bg-slate-950/75 backdrop-blur-sm p-4 md:p-8"
+            >
               <div className="h-full w-full rounded-xl border border-slate-700 bg-slate-900 shadow-2xl flex flex-col overflow-hidden">
                 <div className="h-12 px-4 border-b border-slate-800 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2">
@@ -682,8 +817,8 @@ export default function App() {
                     type="button"
                     onClick={() => setIsFlowOpen(false)}
                     className="p-1.5 rounded hover:bg-slate-800 text-slate-300 hover:text-white transition-colors"
-                    title="Schliessen"
-                    aria-label="Dispatch Flow schliessen"
+                    title="Schließen"
+                    aria-label="Dispatch Flow schließen"
                   >
                     <Icons.X size={16} />
                   </button>
@@ -696,7 +831,13 @@ export default function App() {
           )}
 
           {isHelpOpen && (
-            <div className="absolute inset-0 z-[80] bg-slate-950/75 backdrop-blur-sm p-4 md:p-8">
+            <div
+              id="elab-help-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-label={HelpPlugin.label}
+              className="absolute inset-0 z-[80] bg-slate-950/75 backdrop-blur-sm p-4 md:p-8"
+            >
               <div className="h-full w-full rounded-xl border border-slate-700 bg-slate-900 shadow-2xl flex flex-col overflow-hidden">
                 <div className="h-12 px-4 border-b border-slate-800 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2">
@@ -707,8 +848,8 @@ export default function App() {
                     type="button"
                     onClick={() => setIsHelpOpen(false)}
                     className="p-1.5 rounded hover:bg-slate-800 text-slate-300 hover:text-white transition-colors"
-                    title="Schliessen"
-                    aria-label="Hilfe schliessen"
+                    title="Schließen"
+                    aria-label="Hilfe schließen"
                   >
                     <Icons.X size={16} />
                   </button>
@@ -730,9 +871,27 @@ export default function App() {
             handleUpdateTask={handleUpdateTask}
             handleRemoveTask={handleRemoveTask}
             handleAddChannel={handleAddChannel}
+            onTouchDragStart={handleTouchDragStart}
+            onTouchDragMove={handleTouchDragMove}
+            onTouchDragEnd={handleTouchDragEnd}
+            onTouchDragCancel={handleTouchDragCancel}
             streamBuffers={streamBuffers}
             dispatcherClient={dispatcher}
           />
+
+          {touchDragState && (
+            <div className="pointer-events-none fixed z-[120]" style={{ left: touchDragState.x + 12, top: touchDragState.y + 12 }}>
+              <div className={`rounded-md border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide shadow-lg ${
+                touchDropTarget !== null
+                  ? 'border-emerald-500/80 bg-emerald-500/20 text-emerald-200'
+                  : 'border-slate-600 bg-slate-900/90 text-slate-200'
+              }`}>
+                {touchDropTarget?.kind === 'measure'
+                  ? `${touchDragState.task?.name || 'Task'} -> Measure`
+                  : touchDragState.task?.name || 'Task'}
+              </div>
+            </div>
+          )}
   
         </div>
       </div>

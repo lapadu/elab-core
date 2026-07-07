@@ -75,6 +75,9 @@ export function LayoutSettings({ slots, layout, onLoadTemplate }) {
       baseY: modalPosition.y,
     };
 
+    const dragController = new AbortController();
+    const dragSignal = dragController.signal;
+
     const handlePointerMove = (moveEvent) => {
       const deltaX = moveEvent.clientX - dragStateRef.current.startX;
       const deltaY = moveEvent.clientY - dragStateRef.current.startY;
@@ -91,12 +94,11 @@ export function LayoutSettings({ slots, layout, onLoadTemplate }) {
     };
 
     const handlePointerUp = () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
+      dragController.abort();
     };
 
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointermove', handlePointerMove, { signal: dragSignal });
+    window.addEventListener('pointerup', handlePointerUp, { signal: dragSignal });
   };
 
   const saveTemplate = () => {

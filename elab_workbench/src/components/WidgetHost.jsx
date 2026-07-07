@@ -98,8 +98,13 @@ export const WidgetHost = memo(
     dispatcherClient,
     isOffline,
     slotIndex,
+    onTouchDragStart,
+    onTouchDragMove,
+    onTouchDragEnd,
+    onTouchDragCancel,
   }) => {
     const widgetHostRef = useRef(null);
+    const touchHeaderDragRef = useRef(null);
     const [showWidgetMenu, setShowWidgetMenu] = useState(false);
     const [focusMode, setFocusMode] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
@@ -275,16 +280,85 @@ export const WidgetHost = memo(
       ],
     );
 
+    const createDragPayload = useCallback(() => {
+      // For recorded tasks keep the rec_* id so downstream widgets subscribe
+      // to the replay stream, not to a live source that may share the
+      // original id.
+      return task.is_recorded
+        ? { ...task }
+        : { ...task, id: task.originalId || task.id };
+    }, [task]);
+
     const handleDragStart = (e) => {
       // For recorded tasks keep the rec_* id so downstream widgets subscribe
       // to the replay stream, not to a live source that may share the
       // original id.
-      const dragPayload = task.is_recorded
-        ? { ...task }
-        : { ...task, id: task.originalId || task.id };
+      const dragPayload = createDragPayload();
       e.dataTransfer.setData("task", JSON.stringify(dragPayload));
       e.dataTransfer.effectAllowed = "copy";
     };
+
+    /** @param {React.TouchEvent} e */
+    const handleHeaderTouchStart = useCallback((e) => {
+      if (e.touches.length !== 1) return;
+
+      const touch = e.touches[0];
+      touchHeaderDragRef.current = {
+        startX: touch.clientX,
+        startY: touch.clientY,
+        payload: createDragPayload(),
+        dragging: false,
+      };
+    }, [createDragPayload]);
+
+    /** @param {React.TouchEvent} e */
+    const handleHeaderTouchMove = useCallback((e) => {
+      const state = touchHeaderDragRef.current;
+      if (!state || e.touches.length !== 1) return;
+
+      const touch = e.touches[0];
+      const point = { x: touch.clientX, y: touch.clientY };
+      const movement = Math.hypot(point.x - state.startX, point.y - state.startY);
+
+      if (!state.dragging && movement < 10) return;
+
+      if (!state.dragging) {
+        state.dragging = true;
+        onTouchDragStart?.(state.payload, point);
+      } else {
+        onTouchDragMove?.(point);
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
+    }, [onTouchDragMove, onTouchDragStart]);
+
+    /** @param {React.TouchEvent} e */
+    const handleHeaderTouchEnd = useCallback((e) => {
+      const state = touchHeaderDragRef.current;
+      touchHeaderDragRef.current = null;
+      if (!state?.dragging) return;
+
+      const touch = e.changedTouches[0];
+      if (!touch) {
+        onTouchDragCancel?.();
+        return;
+      }
+
+      onTouchDragEnd?.({ x: touch.clientX, y: touch.clientY });
+      e.preventDefault();
+      e.stopPropagation();
+    }, [onTouchDragCancel, onTouchDragEnd]);
+
+    const handleHeaderTouchCancel = useCallback((e) => {
+      const state = touchHeaderDragRef.current;
+      touchHeaderDragRef.current = null;
+      if (state?.dragging) {
+        onTouchDragCancel?.();
+      }
+      e.preventDefault();
+      e.stopPropagation();
+    }, [onTouchDragCancel]);
 
     // Intercept drops on MEASURE tasks: wire the sensor as inputs.source
     // instead of letting the grid replace this slot.
@@ -349,6 +423,8 @@ export const WidgetHost = memo(
     return (
       <div
         ref={widgetHostRef}
+        data-widget-slot-index={slotIndex}
+        data-widget-type={task.type}
         onDragOver={handleWidgetDragOver}
         onDrop={handleWidgetDrop}
         className={`relative h-full bg-slate-900 rounded-lg border overflow-hidden flex flex-col ${
@@ -357,8 +433,8 @@ export const WidgetHost = memo(
             : "border-slate-800"
         }`}
       >
-        {/* HEADER */}
-        <div className="h-8 bg-slate-950/50 border-b border-slate-800 flex items-center justify-between px-3 shrink-0 z-[60] relative">
+        {/* HEADER DESKTOP */}
+        <div className="hidden md:flex h-8 bg-slate-950/50 border-b border-slate-800 items-center justify-between px-3 shrink-0 z-[60] relative">
           <div
             className="flex items-center gap-2 min-w-0"
             draggable={true}
@@ -386,15 +462,24 @@ export const WidgetHost = memo(
 
           <div className="flex items-center gap-1">
             {viewRenderers.length > 1 && (
-              <div className="flex gap-0.5 bg-slate-900 rounded p-0.5 mr-1">
+              <div
+                role="tablist"
+                aria-label={`Ansichten für ${task.name || 'Widget'}`}
+                className="flex gap-0.5 bg-slate-900 rounded p-0.5 mr-1"
+              >
                 {viewRenderers.map((renderer) => {
                   const IconComponent = Icons[renderer.icon] || Icons.Layout;
+                  const isActive = activeViewId === renderer.id;
                   return (
                     <button
                       key={renderer.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      aria-label={renderer.label}
                       onClick={() => setActiveViewId(renderer.id)}
                       className={`p-1 rounded transition-colors ${
-                        activeViewId === renderer.id
+                        isActive
                           ? "bg-slate-700 text-slate-200"
                           : "text-slate-500 hover:text-slate-300 hover:bg-slate-800"
                       }`}
@@ -464,8 +549,128 @@ export const WidgetHost = memo(
           </div>
         </div>
 
+        {/* HEADER MOBILE */}
+        <div className="md:hidden bg-slate-950/50 border-b border-slate-800 px-2 py-1.5 shrink-0 z-[60] relative space-y-1">
+          <div
+            className="flex items-center gap-2 min-w-0 rounded bg-slate-900/60 px-2 py-1.5 active:bg-slate-800/80"
+            draggable={true}
+            onDragStart={handleDragStart}
+            onTouchStart={handleHeaderTouchStart}
+            onTouchMove={handleHeaderTouchMove}
+            onTouchEnd={handleHeaderTouchEnd}
+            onTouchCancel={handleHeaderTouchCancel}
+          >
+            <div
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{ backgroundColor: task.color }}
+            />
+            <span className="text-xs font-bold text-slate-300 truncate">
+              {task.name}
+            </span>
+            {task.extraChannels?.length > 0 && (
+              <span
+                className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded-full font-bold ml-1"
+                title={`${task.extraChannels.length} additional channel(s) attached`}
+              >
+                +{task.extraChannels.length} CH
+              </span>
+            )}
+            {task.virtual && (
+              <Icons.Cpu className="text-slate-600 shrink-0" size={10} />
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-1">
+            <div className="flex items-center gap-1 min-w-0 overflow-x-auto custom-scrollbar">
+              {viewRenderers.length > 1 && (
+                <div
+                  role="tablist"
+                  aria-label={`Ansichten für ${task.name || 'Widget'}`}
+                  className="flex gap-0.5 bg-slate-900 rounded p-0.5"
+                >
+                  {viewRenderers.map((renderer) => {
+                    const IconComponent = Icons[renderer.icon] || Icons.Layout;
+                    const isActive = activeViewId === renderer.id;
+                    return (
+                      <button
+                        key={renderer.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        aria-label={renderer.label}
+                        onClick={() => setActiveViewId(renderer.id)}
+                        className={`p-1 rounded transition-colors ${
+                          isActive
+                            ? "bg-slate-700 text-slate-200"
+                            : "text-slate-500 hover:text-slate-300 hover:bg-slate-800"
+                        }`}
+                        title={renderer.label}
+                      >
+                        <IconComponent size={12} />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1 shrink-0">
+              {hasCombinedView ? (
+                <button
+                  onClick={() => setFocusMode((prev) => !prev)}
+                  className={`p-1 rounded transition-colors ${
+                    isFocusModeActive
+                      ? "bg-amber-500/20 text-amber-300"
+                      : "hover:bg-slate-700 text-slate-400 hover:text-slate-200"
+                  }`}
+                  title="Focus Mode"
+                >
+                  <Icons.Table size={14} />
+                </button>
+              ) : (
+                <span className="p-1 rounded invisible" aria-hidden="true">
+                  <Icons.Table size={14} />
+                </span>
+              )}
+
+              <button
+                  onClick={handleFullscreen}
+                  className="p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition-colors"
+                  title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+              >
+                  {isFullscreen ? <Icons.Minimize size={14} /> : <Icons.Maximize size={14} />}
+              </button>
+
+              {!task.is_recorded && (
+              <button
+                onClick={() => {
+                  setShowWidgetMenu((prev) => !prev);
+                  setFocusMode(false);
+                }}
+                className={`p-1 rounded transition-colors ${
+                  showWidgetMenu
+                    ? "bg-slate-700 text-slate-200"
+                    : "hover:bg-slate-700 text-slate-400 hover:text-slate-200"
+                }`}
+                title="Widget Menu"
+              >
+                <Icons.Menu size={14} />
+              </button>
+              )}
+
+              <button
+                onClick={wrappedOnRemove}
+                className="p-1 rounded hover:bg-red-900 text-slate-400 hover:text-red-400 transition-colors"
+                title="Remove"
+              >
+                <Icons.X size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* CONTENT */}
-        <div className={`relative h-[calc(100%-2rem)] ${isOffline ? "grayscale opacity-20" : ""}`}>
+        <div className={`relative flex-1 min-h-0 ${isOffline ? "grayscale opacity-20" : ""}`}>
           {showWidgetMenu ? (
             <WidgetMenuPanel
               task={task}

@@ -5,7 +5,7 @@ import logging
 
 # --- CONFIGURATION ---
 UDP_PORT = 5005
-WEB_PORT = 5000
+WEB_PORT = 8010
 SESSION_DIR = "sessions"
 UDP_TTL = 1  # Time To Live for UDP broadcasts (number of hops)
 

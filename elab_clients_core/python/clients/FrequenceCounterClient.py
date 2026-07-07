@@ -117,14 +117,29 @@ COMPONENT_NAME = _extract_component_name(ASSETS_DIR, PLUGIN_FILENAME)
 logger.info("Plugin component name: %s", COMPONENT_NAME)
 
 try:
-    from shared.discovery import discover_dispatcher  # type: ignore[import-not-found]
-    from shared.overrides import load_overrides, save_overrides, apply_task_meta_update  # type: ignore[import-not-found]
-    from shared.plugin_security import compute_plugin_sri  # type: ignore[import-not-found]
-except ImportError:
+    # Preferred: absolute import (works whenever project root is on sys.path).
     from elab_clients_core.python.shared.discovery import discover_dispatcher  # type: ignore[import-not-found]
-    from elab_clients_core.python.shared.overrides import load_overrides, save_overrides, apply_task_meta_update  # type: ignore[import-not-found]
+    from elab_clients_core.python.shared.overrides import (  # type: ignore[import-not-found]
+        load_overrides,
+        save_overrides,
+        apply_task_meta_update,
+    )
+    from elab_clients_core.python.shared.auth import ProviderAuth  # type: ignore[import-not-found]
     try:
-        from elab_clients_core.python.shared.plugin_security import compute_plugin_sri  # type: ignore
+        from elab_clients_core.python.shared.plugin_security import compute_plugin_sri  # type: ignore[import-not-found]
+    except ImportError:
+        compute_plugin_sri = None  # type: ignore[assignment]
+except ImportError:
+    # Fallback for slim deployments that only ship the ``shared/`` directory.
+    from shared.discovery import discover_dispatcher  # type: ignore[import-not-found]
+    from shared.overrides import (  # type: ignore[import-not-found]
+        load_overrides,
+        save_overrides,
+        apply_task_meta_update,
+    )
+    from shared.auth import ProviderAuth  # type: ignore[import-not-found]
+    try:
+        from shared.plugin_security import compute_plugin_sri  # type: ignore[import-not-found]
     except ImportError:
         compute_plugin_sri = None  # type: ignore[assignment]
 
@@ -457,12 +472,14 @@ def run_dispatcher_mode(dispatcher_url):
 
     # Connect to the upstream Socket.IO dispatcher.
     sio = socketio.Client()
+    auth = ProviderAuth(device_id=DEVICE_ID)
+    auth.bind(sio)
 
     @sio.event
     def connect():
         upstream_connected.set()
         logger.info("✅ Connected to Upstream Dispatcher!")
-        sio.emit('register_provider', DEVICE_MANIFEST)
+        auth.send_register(sio, DEVICE_MANIFEST)
 
     @sio.event
     def disconnect():
@@ -484,10 +501,10 @@ def run_dispatcher_mode(dispatcher_url):
             if apply_task_meta_update(DEVICE_MANIFEST, target_id, payload):
                 save_overrides(DEVICE_MANIFEST, OVERRIDES_FILE)
 
-    # Only emit data while the upstream connection is available.
+    # Only emit data while the upstream connection is available and approved.
     def safe_send(payload):
-        if upstream_connected.is_set():
-            sio.emit('data_stream', payload)
+        if upstream_connected.is_set() and auth.has_secret():
+            sio.emit('data_stream', auth.sign(payload))
 
     try:
         sio.connect(dispatcher_url)

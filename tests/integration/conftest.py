@@ -7,11 +7,8 @@ over in-process queues – no real socket or port needed.
 
 import os
 import sys
-import time
-import json
+
 import pytest
-import sqlite3
-import threading
 
 # Ensure the repo root is importable.
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -20,6 +17,10 @@ if REPO_ROOT not in sys.path:
 
 # Force dispatcher-only mode for tests (no frontend serving).
 sys.argv = ["server", "-d"]
+
+# Disable HMAC authentication for integration tests that are not testing auth.
+# Without this, data_stream packets are silently dropped by the auth gate.
+os.environ["ELAB_REQUIRE_AUTH"] = "0"
 
 
 @pytest.fixture(scope="session")

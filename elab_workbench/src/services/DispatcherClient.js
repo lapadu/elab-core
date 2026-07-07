@@ -2,12 +2,34 @@
 import { io } from 'socket.io-client';
 import { SOCKET_EVENTS, APP_EVENTS } from '../utils/EventTypes';
 
+// Generate a cryptographically random session id so client-issued ids cannot
+// be guessed or hijacked. Falls back to a high-entropy Math.random combo on
+// the very unlikely case that the Web Crypto API is unavailable.
+function _generateSessionId() {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      let hex = '';
+      for (const b of bytes) hex += b.toString(16).padStart(2, '0');
+      return `session_${hex}`;
+    }
+  } catch {
+    // ignore – fall through to non-crypto fallback below.
+  }
+  let fallback = '';
+  for (let i = 0; i < 4; i += 1) {
+    fallback += Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');
+  }
+  return `session_${fallback}`;
+}
+
 class DispatcherClient {
   constructor() {
     this.socket = null;
     this.connected = false;
     this.providers = [];
-    this.sessionId = `session_${Date.now()}`;
+    this.sessionId = _generateSessionId();
 
     // Initialize the event handler map from APP_EVENTS.
     this.handlers = Object.values(APP_EVENTS).reduce((acc, eventName) => {
@@ -38,6 +60,16 @@ class DispatcherClient {
       this.connected = true;
       this.sessionId = data.session_id || this.sessionId;
       this.serverVersion = data.server_version || null;
+      // Mirror the server's plugin origin allow-list onto the global the
+      // WidgetLoader inspects, so the browser refuses untrusted script URLs
+      // even if a build artefact has been tampered with.
+      try {
+        const list = Array.isArray(data.plugin_origins) ? data.plugin_origins : [];
+        if (typeof window !== 'undefined') {
+          window.__ELAB_PLUGIN_ORIGINS__ = list.map((o) => String(o).toLowerCase());
+          window.__ELAB_SERVER_ORIGIN__ = this.socket?.io?.uri || null;
+        }
+      } catch { /* ignore */ }
       this._emit(APP_EVENTS.ON_CONNECTION_ESTABLISHED, data);
       this.registerClient();
       this.getAvailableScripts();
@@ -113,6 +145,11 @@ class DispatcherClient {
       // Server tells a freshly registered UI which slots are still occupied
       // (e.g. from a previous tab on the same dispatcher).
       this._emit(APP_EVENTS.ON_ACTIVE_TASKS_SNAPSHOT, data);
+    });
+
+    this.socket.on(SOCKET_EVENTS.PENDING_DEVICES, (data) => {
+      // List of unknown / un-approved providers awaiting operator decision.
+      this._emit(APP_EVENTS.ON_PENDING_DEVICES, data?.devices || data);
     });
 
 
@@ -227,6 +264,37 @@ class DispatcherClient {
 
   startClientScript(filename) {
     this.socket?.emit(SOCKET_EVENTS.START_CLIENT_SCRIPT, { filename });
+  }
+
+  // --- Pairing / Trust-on-First-Use management ---
+
+  /** Request the current list of pending (un-approved) providers. */
+  getPendingDevices() {
+    this.socket?.emit(SOCKET_EVENTS.GET_PENDING_DEVICES);
+  }
+
+  /**
+   * Approve a pending device. The dispatcher will hand back a one-shot
+   * shared secret to the device and start accepting its data_stream.
+   * @param {string} deviceId
+   * @param {string} manifestHash  Hash echoed in the pending_devices entry;
+   *   must match to prevent racing against a manifest change.
+   */
+  approvePendingDevice(deviceId, manifestHash) {
+    this.socket?.emit(SOCKET_EVENTS.APPROVE_PENDING_DEVICE, {
+      deviceId,
+      manifestHash,
+    });
+  }
+
+  /** Revoke an approved device (disconnects it; future connects re-pending). */
+  revokeDevice(deviceId) {
+    this.socket?.emit(SOCKET_EVENTS.REVOKE_DEVICE, { deviceId });
+  }
+
+  /** Delete a stored credential entirely (admin / cleanup). */
+  deleteDeviceCredential(deviceId) {
+    this.socket?.emit(SOCKET_EVENTS.DELETE_DEVICE_CREDENTIAL, { deviceId });
   }
 
   stopClientScript(filename) {

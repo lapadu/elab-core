@@ -1,5 +1,6 @@
 """This module contains the SessionReplayer class."""
 import math
+import re
 import threading
 import time
 import os
@@ -16,6 +17,13 @@ logger = logging.getLogger(__name__)
 # treated as corrupt: 2020-01-01 to 2100-01-01 in milliseconds since epoch.
 _MIN_VALID_MS = 1_577_836_800_000
 _MAX_VALID_MS = 4_102_444_800_000
+
+# Session IDs are produced by the recorder as ``YYYY-MM-DD_HH-MM-SS``,
+# optionally followed by ``_<user-supplied-name>``. The whitelist blocks
+# path separators, ``..`` traversal and absolute paths before the value
+# reaches ``os.path.join``; the realpath containment check below is the
+# real defence in depth.
+_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 class SessionReplayer(threading.Thread):  # pylint: disable=too-many-instance-attributes
     """A class to replay recorded sessions."""
@@ -37,8 +45,23 @@ class SessionReplayer(threading.Thread):  # pylint: disable=too-many-instance-at
 
     def load_session(self, session_id):
         """Loads a session for replaying."""
-        path = os.path.join(SESSION_DIR, session_id, "session.sqlite")
-        if not os.path.exists(path):
+        if not isinstance(session_id, str) or not _SESSION_ID_RE.match(session_id):
+            logger.warning("load_session rejected invalid session_id %r", session_id)
+            return False, "Invalid session id"
+
+        sessions_root = os.path.realpath(SESSION_DIR)
+        candidate = os.path.realpath(os.path.join(sessions_root, session_id, "session.sqlite"))
+        # Containment check: the resolved path must live inside SESSION_DIR
+        # and its direct parent must be ``<sessions_root>/<session_id>``.
+        expected_parent = os.path.realpath(os.path.join(sessions_root, session_id))
+        if os.path.dirname(candidate) != expected_parent:
+            logger.warning(
+                "load_session rejected out-of-root path for %r (resolved=%s)",
+                session_id, candidate,
+            )
+            return False, "Invalid session id"
+        path = candidate
+        if not os.path.isfile(path):
             return False, "Session file not found"
 
         self.active_session_path = path

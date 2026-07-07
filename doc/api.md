@@ -55,8 +55,20 @@ Hardware providers and UI clients communicate with the Dispatcher via Socket.IO.
 Registers a hardware provider and announces its tasks.
 
 - **Payload:** `dict` (The Provider Manifest matching `ManifestSchema.json`)
-- **Server Action:** Validates the manifest, sanitizes plugin URLs against the allow-list. On success, broadcasts the updated provider list to all UI clients.
-- **Emits Back:** `provider_registered` (to UI clients) or `registration_error` (to the registering provider).
+  - Optional field `auto_approve_token` (string): one-shot token from
+    `ELAB_AUTO_APPROVE_TOKEN` env var. Trusted local scripts spawned by
+    the `ProcessManager` carry this automatically.
+- **Server Action:** Validates the manifest, sanitizes plugin URLs against
+  the allow-list, computes `manifest_hash` and looks up the device
+  credential. Unknown or changed devices are quarantined.
+- **Emits Back (Pairing flow — see [`security.md`](security.md)):**
+  - `registration_approved` `{deviceId, secret, manifestHash}` — pairing
+    complete, secret shipped exactly once.
+  - `registration_pending` `{deviceId, manifestHash}` — operator approval
+    required in the Workbench "Registrierung" section.
+  - `registration_revoked` `{deviceId, reason?}` — credential withdrawn.
+  - `provider_registered` (to UI clients) on approval, or
+    `registration_error` on invalid manifest.
 
 ### `register_client`
 
@@ -69,6 +81,16 @@ Registers a UI client.
 ### `data_stream` — Hardware Upload
 
 Used by hardware providers to push new measurement data.
+
+> **Authentication required (default).** Every `data_stream` packet MUST
+> carry a signed `auth` block — see [`security.md`](security.md) for the
+> exact format. Unsigned packets are silently dropped. To temporarily
+> disable enforcement (test / migration), set `ELAB_REQUIRE_AUTH=0` on
+> the server.
+>
+> ```json
+> "auth": { "sig": "<hmac-sha256 hex>", "ts": 1735052819.123456 }
+> ```
 
 - **Payload (simple scalar):**
 
@@ -171,6 +193,22 @@ Used when a provider updates its own metadata (like display name or color).
   ```
 
 - **Server Action:** Updates state and broadcasts the change to all UI clients.
+
+### Provider Pairing (UI -> Server)
+
+See [`security.md`](security.md) for the full Trust-on-First-Use model.
+
+- `get_pending_devices` — request the current pending list. Server
+  replies with `pending_devices` (also broadcast to all UI clients on
+  state changes).
+- `approve_pending_device` — payload `{ "deviceId": "...", "manifestHash": "..." }`.
+  Approves a pending provider; server hands the secret to the device via
+  `registration_approved` and starts accepting its `data_stream`.
+- `revoke_device` — payload `{ "deviceId": "..." }`. Disconnects the
+  device and emits `registration_revoked`. Future reconnects re-enter
+  the pending state.
+- `delete_device_credential` — payload `{ "deviceId": "..." }`. Wipes
+  the credential row entirely (admin / cleanup).
 
 ### Session & Recording Management
 

@@ -1,4 +1,4 @@
-import React, { useState, memo } from "react";
+import React, { useRef, useState, memo } from "react";
 import { Icons } from "../utils/Shared";
 
 const generateInstanceId = () => `inst_${Date.now()}`;
@@ -50,11 +50,28 @@ const saveExpandedState = (state) => {
  *  devices: Record<string, import('../plugins/core/ManifestTypes').Task[]>,
  *  scripts: any[],
  *  onStartScript: (filename: string) => void,
- *  onStopScript: (filename: string) => void
+ *  onStopScript: (filename: string) => void,
+ *  onTouchDragStart?: (task: import('../plugins/core/ManifestTypes').Task, point: { x: number, y: number }) => void,
+ *  onTouchDragMove?: (point: { x: number, y: number }) => void,
+ *  onTouchDragEnd?: (point: { x: number, y: number }) => void,
+ *  onTouchDragCancel?: () => void
  * }} props
  */
 export const DeviceTree = memo(
-  ({ devices, scripts = [], onStartScript, onStopScript }) => {
+  ({
+    devices,
+    scripts = [],
+    pendingDevices = [],
+    onApproveDevice,
+    onRevokeDevice,
+    onStartScript,
+    onStopScript,
+    onTouchDragStart,
+    onTouchDragMove,
+    onTouchDragEnd,
+    onTouchDragCancel,
+  }) => {
+    const touchDragStateRef = useRef(null);
     const [expanded, setExpandedLocal] = useState(() => loadExpandedState());
     const [categoryFilter, setCategoryFilterLocal] = useState(() => {
       try {
@@ -231,37 +248,99 @@ export const DeviceTree = memo(
 
     const visibleTags = collectVisibleTags();
 
+    const buildDragPayload = (dev) => {
+      const taskData = dev.isFactory ? dev.createTask() : dev;
+
+      return {
+        id: dev.isFactory ? generateInstanceId() : taskData.id,
+        originalId: dev.isFactory ? taskData.id : taskData.originalId,
+        groupId: taskData.groupId,
+        name: taskData.name,
+        type: taskData.type,
+        virtual: !!taskData.virtual,
+        is_recorded: !!taskData.is_recorded,
+        providerId: taskData.providerId,
+        config: taskData.config || {},
+        ui: taskData.ui || {},
+        color: taskData.color,
+        inputs: taskData.inputs || {},
+        actions: taskData.actions || [],
+      };
+    };
+
     /**
      * @param {React.DragEvent} e
      * @param {import('../plugins/core/ManifestTypes').Task} dev
      */
     const handleDragStart = (e, dev) => {
       try {
-        const taskData = dev.isFactory ? dev.createTask() : dev;
-
-        // Keep the drag payload limited to the data needed by the reducer.
-        const cleanPayload = {
-          id: dev.isFactory ? generateInstanceId() : taskData.id,
-          originalId: dev.isFactory ? taskData.id : taskData.originalId,
-          groupId: taskData.groupId,
-          name: taskData.name,
-          type: taskData.type,
-          virtual: !!taskData.virtual,
-          is_recorded: !!taskData.is_recorded,
-          providerId: taskData.providerId,
-          config: taskData.config || {},
-          ui: taskData.ui || {},
-          color: taskData.color,
-          inputs: taskData.inputs || {},
-          actions: taskData.actions || [],
-        };
-
+        const cleanPayload = buildDragPayload(dev);
         const jsonStr = JSON.stringify(cleanPayload);
         e.dataTransfer.setData("task", jsonStr);
         e.dataTransfer.effectAllowed = "copy";
       } catch (error) {
         console.error("Error in drag start:", error);
         e.preventDefault();
+      }
+    };
+
+    /**
+     * @param {React.TouchEvent} e
+     * @param {import('../plugins/core/ManifestTypes').Task} dev
+     */
+    const handleTouchStart = (e, dev) => {
+      if (e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      touchDragStateRef.current = {
+        startX: touch.clientX,
+        startY: touch.clientY,
+        payload: buildDragPayload(dev),
+        dragging: false,
+      };
+    };
+
+    /** @param {React.TouchEvent} e */
+    const handleTouchMove = (e) => {
+      const state = touchDragStateRef.current;
+      if (!state || e.touches.length !== 1) return;
+
+      const touch = e.touches[0];
+      const point = { x: touch.clientX, y: touch.clientY };
+      const movement = Math.hypot(point.x - state.startX, point.y - state.startY);
+
+      if (!state.dragging && movement < 10) return;
+
+      if (!state.dragging) {
+        state.dragging = true;
+        onTouchDragStart?.(state.payload, point);
+      } else {
+        onTouchDragMove?.(point);
+      }
+
+      e.preventDefault();
+    };
+
+    /** @param {React.TouchEvent} e */
+    const handleTouchEnd = (e) => {
+      const state = touchDragStateRef.current;
+      touchDragStateRef.current = null;
+      if (!state?.dragging) return;
+
+      const touch = e.changedTouches[0];
+      if (!touch) {
+        onTouchDragCancel?.();
+        return;
+      }
+
+      onTouchDragEnd?.({ x: touch.clientX, y: touch.clientY });
+      e.preventDefault();
+    };
+
+    const handleTouchCancel = () => {
+      const state = touchDragStateRef.current;
+      touchDragStateRef.current = null;
+      if (state?.dragging) {
+        onTouchDragCancel?.();
       }
     };
 
@@ -343,8 +422,11 @@ export const DeviceTree = memo(
 
           return (
             <div key={category}>
-              <div
-                className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-widest cursor-pointer hover:text-slate-200 mb-2"
+              <button
+                type="button"
+                className="w-full flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-widest cursor-pointer hover:text-slate-200 mb-2"
+                aria-expanded={!!expanded[category]}
+                aria-controls={`elab-devicetree-section-${category}`}
                 onClick={() =>
                   setExpanded((p) => ({ ...p, [category]: !p[category] }))
                 }
@@ -355,10 +437,13 @@ export const DeviceTree = memo(
                   <Icons.ChevronRight size={12} />
                 )}
                 {category} ({items.length})
-              </div>
+              </button>
 
               {expanded[category] && (
-                <div className="space-y-1 pl-2 border-l border-slate-800 ml-1.5">
+                <div
+                  id={`elab-devicetree-section-${category}`}
+                  className="space-y-1 pl-2 border-l border-slate-800 ml-1.5"
+                >
                   {items.map((dev) => {
                     const { icon: TypeIcon, color } = getTypeInfo(dev.type);
                     return (
@@ -366,6 +451,10 @@ export const DeviceTree = memo(
                         key={dev.id}
                         draggable
                         onDragStart={(e) => handleDragStart(e, dev)}
+                        onTouchStart={(e) => handleTouchStart(e, dev)}
+                        onTouchMove={handleTouchMove}
+                        onTouchEnd={handleTouchEnd}
+                        onTouchCancel={handleTouchCancel}
                         className="group flex items-center justify-between p-2 rounded bg-slate-900 border border-transparent hover:border-slate-700 cursor-grab active:cursor-grabbing hover:shadow-md transition-all"
                       >
                         <div className="flex items-center gap-2 overflow-hidden">
@@ -415,8 +504,11 @@ export const DeviceTree = memo(
 
         {/* LIBRARY SECTION */}
         <div>
-          <div
-            className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-widest cursor-pointer hover:text-slate-200 mb-2"
+          <button
+            type="button"
+            className="w-full flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-widest cursor-pointer hover:text-slate-200 mb-2"
+            aria-expanded={!!expanded["Library"]}
+            aria-controls="elab-devicetree-section-library"
             onClick={() =>
               setExpanded((p) => ({ ...p, Library: !p["Library"] }))
             }
@@ -427,9 +519,12 @@ export const DeviceTree = memo(
               <Icons.ChevronRight size={12} />
             )}
             Library ({scripts.length})
-          </div>
+          </button>
           {expanded["Library"] && (
-            <div className="space-y-1 pl-2 border-l border-slate-800 ml-1.5">
+            <div
+              id="elab-devicetree-section-library"
+              className="space-y-1 pl-2 border-l border-slate-800 ml-1.5"
+            >
               {scripts.map((script) => (
                 <div
                   key={script.name}
@@ -483,6 +578,72 @@ export const DeviceTree = memo(
             </div>
           )}
         </div>
+
+        {/* REGISTRATION: pending devices awaiting operator approval (TOFU). */}
+        {pendingDevices && pendingDevices.length > 0 && (
+          <div className="border border-amber-700/60 rounded-lg bg-amber-950/30 p-2">
+            <div className="flex items-center gap-2 mb-2">
+              <Icons.ShieldAlert size={14} className="text-amber-400" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-amber-300">
+                Registrierung
+              </h3>
+              <span className="ml-auto text-[9px] font-mono bg-amber-900/60 text-amber-200 px-1.5 py-0.5 rounded">
+                {pendingDevices.length} wartend
+              </span>
+            </div>
+            <p className="text-[10px] text-amber-200/70 mb-2 leading-snug">
+              Neue Geräte müssen einmalig freigegeben werden. Danach
+              authentifizieren sie sich automatisch.
+            </p>
+            <div className="space-y-2">
+              {pendingDevices.map((dev) => {
+                const deviceId = dev?.deviceId ?? dev?.device_id ?? dev?.id;
+                const name = dev?.manifest?.name || deviceId || "Unbekannt";
+                const ip = dev?.clientIp || dev?.client_ip || "?";
+                const hash = dev?.manifestHash || dev?.manifest_hash || "";
+                const hashShort = hash ? hash.slice(0, 8) : "—";
+                return (
+                  <div
+                    key={deviceId}
+                    className="p-2 bg-slate-900 border border-slate-800 rounded"
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-medium text-slate-200 truncate">
+                          {name}
+                        </div>
+                        <div className="text-[9px] text-slate-500 font-mono truncate">
+                          {deviceId}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-[9px] text-slate-500 font-mono mb-2">
+                      <span>{ip}</span>
+                      <span>·</span>
+                      <span title={hash}>hash:{hashShort}</span>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => onApproveDevice?.(deviceId, hash)}
+                        className="flex-1 px-2 py-1 text-[10px] font-bold rounded bg-emerald-700 hover:bg-emerald-600 text-white transition"
+                        title="Gerät zulassen und Schlüssel ausstellen"
+                      >
+                        Zulassen
+                      </button>
+                      <button
+                        onClick={() => onRevokeDevice?.(deviceId)}
+                        className="flex-1 px-2 py-1 text-[10px] font-bold rounded bg-slate-800 hover:bg-rose-900/60 text-slate-300 hover:text-rose-200 border border-slate-700 transition"
+                        title="Verbindung beenden und Schlüssel ablehnen"
+                      >
+                        Ablehnen
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     );
   },

@@ -12,12 +12,16 @@ export const Workspace = memo(({
   handleUpdateTask,
   handleRemoveTask,
   handleAddChannel,
+  onTouchDragStart,
+  onTouchDragMove,
+  onTouchDragEnd,
+  onTouchDragCancel,
   streamBuffers,
   dispatcherClient,
 }) => {
   return (
-    <div className="flex-1 p-4 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black overflow-hidden">
-      <div className={`grid gap-4 h-full ${gridClass}`}>
+    <div className="flex-1 min-h-0 p-4 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black overflow-y-auto md:overflow-hidden">
+      <div className={`grid gap-4 min-h-full h-auto md:h-full ${gridClass}`}>
         {activeSlots.map(i => {
           const task = slots[i];
           const isOffline = task && task.providerId && !task.is_recorded && (
@@ -27,11 +31,12 @@ export const Workspace = memo(({
           return (
             <div
               key={i}
+              data-slot-index={i}
               onDragOver={e => e.preventDefault()}
               onDrop={e => handleDropOnSlot(e, i)}
               className={`relative rounded-lg transition-all duration-300 border-2 
                           ${task ? 'border-transparent bg-slate-800/50' : 'border-slate-800 border-dashed bg-slate-900/20 hover:border-slate-700'} 
-                          overflow-hidden`}
+                          overflow-hidden min-h-[18rem] md:min-h-0`}
             >
               {task ? (
                 <WidgetHost
@@ -40,6 +45,10 @@ export const Workspace = memo(({
                   onUpdateTask={handleUpdateTask}
                   onRemove={handleRemoveTask}
                   onAddChannel={handleAddChannel}
+                  onTouchDragStart={onTouchDragStart}
+                  onTouchDragMove={onTouchDragMove}
+                  onTouchDragEnd={onTouchDragEnd}
+                  onTouchDragCancel={onTouchDragCancel}
                   streamBuffers={streamBuffers}
                   dispatcherClient={dispatcherClient}
                   isOffline={isOffline}

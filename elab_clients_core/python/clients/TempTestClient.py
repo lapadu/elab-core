@@ -22,6 +22,11 @@ sys.path.append(project_root)
 _clients_dir = os.path.dirname(os.path.abspath(__file__))
 if _clients_dir not in sys.path:
     sys.path.insert(0, _clients_dir)
+# Add the python/ parent directory so ``from shared.X import …`` works when
+# the client is launched directly from elab_clients_core/python/clients/.
+_python_dir = os.path.dirname(_clients_dir)
+if _python_dir not in sys.path:
+    sys.path.insert(0, _python_dir)
 
 import socketio
 
@@ -32,20 +37,26 @@ def discover_dispatcher(*_args: Any, **_kwargs: Any) -> str | None:
 
 
 try:
-    from shared.discovery import (
-        discover_dispatcher,
-    )
-    from shared.overrides import (
+    # Preferred: absolute import that always resolves when the project root
+    # is on sys.path (server-spawned and dev workflows).
+    from elab_clients_core.python.shared.discovery import discover_dispatcher  # type: ignore[import-not-found]
+    from elab_clients_core.python.shared.overrides import (  # type: ignore[import-not-found]
         load_overrides,
         save_overrides,
         apply_task_meta_update,
     )
+    from elab_clients_core.python.shared.auth import ProviderAuth  # type: ignore[import-not-found]
 except ImportError:
-    try:
-        from elab_clients_core.python.shared.discovery import discover_dispatcher  # type: ignore[import-not-found]
-        from elab_clients_core.python.shared.overrides import load_overrides, save_overrides, apply_task_meta_update  # type: ignore[import-not-found]
-    except ImportError:
-        from overrides import load_overrides, save_overrides, apply_task_meta_update  # type: ignore[import-not-found]
+    # Fallback: launched from the clients dir (e.g. Raspberry Pi packaging
+    # that ships the shared modules next to the script). ``_python_dir`` is
+    # on sys.path above so ``from shared.X import …`` resolves cleanly.
+    from shared.discovery import discover_dispatcher  # type: ignore[import-not-found]
+    from shared.overrides import (  # type: ignore[import-not-found]
+        load_overrides,
+        save_overrides,
+        apply_task_meta_update,
+    )
+    from shared.auth import ProviderAuth  # type: ignore[import-not-found]
 from elab_server.manifest_builder import (
     ManifestBuilder,
 )
@@ -290,6 +301,14 @@ if __name__ == "__main__":
 
     sio = socketio.Client()
     connected_event = threading.Event()
+    auth = ProviderAuth(device_id=SENSOR_ID)
+    auth.bind(sio)
+
+    def _emit_data(payload):
+        """Sign and emit a data_stream packet (no-op if not yet approved)."""
+        if not auth.has_secret():
+            return
+        sio.emit("data_stream", auth.sign(payload))
 
     def shutdown_handler(_signum, _frame):
         """Saves overrides and shuts the client down cleanly."""
@@ -318,7 +337,7 @@ if __name__ == "__main__":
     sinus_task_instance = SinusTask(
         task_id=sinus_task_manifest["id"],
         initial_config=sinus_task_manifest["config"],
-        send_callback=lambda p: sio.emit("data_stream", p),
+        send_callback=_emit_data,
         is_connected_event=connected_event,
     )
 
@@ -326,7 +345,7 @@ if __name__ == "__main__":
     def connect():  # pylint: disable=missing-function-docstring
         connected_event.set()
         logger.info("✅ Connected to dispatcher!")
-        sio.emit("register_provider", DEVICE_MANIFEST)
+        auth.send_register(sio, DEVICE_MANIFEST)
 
     @sio.event
     def disconnect():  # pylint: disable=missing-function-docstring
@@ -359,7 +378,7 @@ if __name__ == "__main__":
 
         temp_thread = threading.Thread(
             target=simulate_temp_loop,
-            args=(lambda p: sio.emit("data_stream", p), connected_event),
+            args=(_emit_data, connected_event),
             daemon=True,
         )
         sinus_thread = threading.Thread(target=sinus_task_instance.run, daemon=True)

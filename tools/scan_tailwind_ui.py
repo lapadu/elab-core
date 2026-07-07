@@ -707,7 +707,7 @@ def main():
 
     args = parser.parse_args()
 
-    # Find project root (where setup.cfg or GEMINI.md exists)
+    # Find project root (where setup.cfg or AGENTS.md exists)
     project_root = Path(__file__).parent.parent
 
     if not project_root.exists():

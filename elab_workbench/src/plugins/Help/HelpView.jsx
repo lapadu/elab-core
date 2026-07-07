@@ -19,10 +19,10 @@ export default function HelpView() {
       {/* Tabs */}
       <div className="flex items-center gap-2 flex-wrap">
         {[
-          { id: 'help', label: 'Hilfe & Bedienung' },
-          { id: 'licenses-fe', label: 'Lizenzen (Frontend)' },
-          { id: 'licenses-be', label: 'Lizenzen (Backend)' },
-          { id: 'about', label: 'Über' },
+          { id: 'help', label: 'Help & Operation' },
+          { id: 'licenses-fe', label: 'Licenses (Frontend)' },
+          { id: 'licenses-be', label: 'Licenses (Backend)' },
+          { id: 'about', label: 'About' },
         ].map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={[
@@ -65,26 +65,26 @@ export default function HelpView() {
             </div>
           ))}
           {pluginHelpItems.length === 0 && (
-            <p className="text-sm text-gray-400">Keine Plugin-Hilfe verfügbar.</p>
+            <p className="text-sm text-gray-400">No plugin help available.</p>
           )}
         </div>
       )}
 
       {/* Frontend Licenses */}
       {tab === 'licenses-fe' && (
-        <LicenseTable title="Frontend-Abhängigkeiten (npm)" deps={FRONTEND_DEPS} />
+        <LicenseTable title="Frontend Dependencies (npm)" deps={FRONTEND_DEPS} />
       )}
 
       {/* Backend Licenses */}
       {tab === 'licenses-be' && (
-        <LicenseTable title="Backend-Abhängigkeiten (Python)" deps={BACKEND_DEPS} />
+        <LicenseTable title="Backend Dependencies (Python)" deps={BACKEND_DEPS} />
       )}
 
       {/* About */}
       {tab === 'about' && (
         <div className="max-w-2xl space-y-6">
           <div>
-            <h2 className="text-lg font-bold text-gray-700 dark:text-gray-200 mb-3">Über e_Lab</h2>
+            <h2 className="text-lg font-bold text-gray-700 dark:text-gray-200 mb-3">About e_Lab</h2>
             <div className="flex items-center gap-3 mb-4 bg-gray-50 dark:bg-[var(--sys-surface-default)] p-3 rounded border border-gray-200 dark:border-[var(--sys-surface-interactive)]">
               <div className="text-sm text-gray-600 dark:text-gray-300 font-mono">
                 <span className="text-gray-500 dark:text-gray-400">Frontend:</span>{' '}
@@ -99,12 +99,11 @@ export default function HelpView() {
               </div>
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">
-              e_Lab ist ein modularer Mess- und Laborserver. Er verbindet Hardware-Sensoren
-              (ESP32, Raspberry Pi, Simulationen) über einen zentralen Dispatcher mit einer
-              React-basierten Workbench.
+              e_Lab is a modular measurement and laboratory server. It connects hardware sensors
+              (ESP32, Raspberry Pi, simulations) to a React-based workbench via a central dispatcher.
             </p>
             <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
-              <strong>Technologie:</strong> React 19 + Vite (Frontend), Python 3.13 + Flask + Socket.IO + gevent (Backend)
+              <strong>Technology:</strong> React 19 + Vite (Frontend), Python 3.13 + Flask + Socket.IO + gevent (Backend)
             </p>
             <p className="text-xs text-gray-400 dark:text-gray-500">
               © {new Date().getFullYear()} E-Lab Contributors
@@ -114,9 +113,9 @@ export default function HelpView() {
           <hr className="border-gray-200 dark:border-[var(--sys-surface-interactive)]" />
 
           <div>
-            <h3 className="text-md font-bold text-gray-700 dark:text-gray-200 mb-2">Lizenz</h3>
+            <h3 className="text-md font-bold text-gray-700 dark:text-gray-200 mb-2">License</h3>
             <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
-              <strong>e_Lab</strong> ist unter der <strong>MIT-Lizenz</strong> lizenziert.
+              <strong>e_Lab</strong> is licensed under the <strong>MIT License</strong>.
             </p>
             <div className="bg-gray-50 dark:bg-[var(--sys-surface-default)] p-3 rounded border border-gray-200 dark:border-[var(--sys-surface-interactive)] text-xs font-mono text-gray-700 dark:text-gray-300 overflow-auto max-h-48 mb-3">
               <pre>{`MIT License
@@ -129,24 +128,24 @@ in the Software without restriction, including without limitation the rights
 to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software...
 
-(vollständige Lizenz siehe LICENSE-Datei im Repository)`}</pre>
+(see LICENSE file in the repository for the full license text)`}</pre>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-              ℹ️ <strong>Build-Hinweis:</strong> PyInstaller (GPL-2.0-or-later) wird nur zur Build-Zeit genutzt,
-              nicht zur Runtime. Dies beeinträchtigt nicht die MIT-Lizenz von e_Lab selbst.
+              ℹ️ <strong>Build Note:</strong> PyInstaller (GPL-2.0-or-later) is only used at build time,
+              not at runtime. This does not affect the MIT license of e_Lab itself.
             </p>
           </div>
 
           <div>
-            <h3 className="text-md font-bold text-gray-700 dark:text-gray-200 mb-2">Abhängigkeiten</h3>
+            <h3 className="text-md font-bold text-gray-700 dark:text-gray-200 mb-2">Dependencies</h3>
             <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
-              Alle Abhängigkeiten sind unter kommerziell freundlichen Lizenzen verfügbar.
-              Siehe Tabs <strong>Lizenzen (Frontend)</strong> und <strong>Lizenzen (Backend)</strong> für Details.
+              All dependencies are available under commercially friendly licenses.
+              See the <strong>Licenses (Frontend)</strong> and <strong>Licenses (Backend)</strong> tabs for details.
             </p>
             <button
               onClick={() => setTab('licenses-fe')}
               className="inline-block px-3 py-1.5 text-xs font-medium rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors">
-              → Alle Lizenzen anzeigen
+              → View All Licenses
             </button>
           </div>
         </div>
@@ -163,9 +162,9 @@ function LicenseTable({ title, deps }) {
       <table className="w-full text-sm border-collapse">
         <thead>
           <tr className="border-b border-gray-200 dark:border-[var(--sys-surface-interactive)]">
-            <th className="text-left py-2 px-3 font-semibold text-gray-500 dark:text-gray-400">Paket</th>
+            <th className="text-left py-2 px-3 font-semibold text-gray-500 dark:text-gray-400">Package</th>
             <th className="text-left py-2 px-3 font-semibold text-gray-500 dark:text-gray-400">Version</th>
-            <th className="text-left py-2 px-3 font-semibold text-gray-500 dark:text-gray-400">Lizenz</th>
+            <th className="text-left py-2 px-3 font-semibold text-gray-500 dark:text-gray-400">License</th>
             <th className="text-left py-2 px-3 font-semibold text-gray-500 dark:text-gray-400">Repository</th>
           </tr>
         </thead>

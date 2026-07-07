@@ -29,6 +29,25 @@ class SystemState:
         self._provider_sid_index: Dict[str, str] = {}           # provider_id / task_id -> sid
         # Configuration store for tasks whose provider does NOT self-persist.
         self.config_store: Optional[ConfigStore] = config_store
+        # --- Authentication / pairing state ---
+        # Providers awaiting operator approval. sid -> {device_id, manifest,
+        # manifest_hash, client_ip, first_seen_at}. Kept separate from
+        # ``self.providers`` so unapproved devices never appear to the UI as
+        # active data sources, while still being visible in the registration view.
+        self.pending_providers: Dict[str, Dict[str, Any]] = {}
+        # Active approved providers: device_id -> secret_hex (in-memory cache for
+        # fast HMAC verification on the data_stream hot path).
+        self.approved_secrets: Dict[str, str] = {}
+        # sid -> device_id mapping for approved sessions.
+        self.sid_to_device: Dict[str, str] = {}
+        # One-shot auto-approval tokens issued to locally-spawned scripts via
+        # ProcessManager. Consumed on first register_provider use.
+        self.auto_approve_tokens: Dict[str, Dict[str, Any]] = {}  # token -> {issued_at, script}
+        # Source IDs (provider + task ids) belonging to UI-internal virtual
+        # providers (e.g. in-browser simulators registered from the workbench).
+        # These bypass TOFU/HMAC because the originating socket is already a
+        # trusted UI client; the provider effectively is the UI.
+        self.ui_internal_sources: set[str] = set()
 
     @contextmanager
     def atomic_update(self):
@@ -129,7 +148,8 @@ class SystemState:
             for old in replaced:
                 self._unindex_manifest(old)
                 for task in old.get('tasks', []) or []:
-                    self.decoders.pop(task.get('id'), None)
+                    if isinstance(task, dict):
+                        self.decoders.pop(task.get('id'), None)
             self.providers[sid] = [
                 p for p in self.providers[sid] if p.get('id') != manifest.get('id')
             ]
@@ -147,7 +167,18 @@ class SystemState:
             for manifest in providers:
                 self._unindex_manifest(manifest)
                 for task in manifest.get('tasks', []) or []:
-                    self.decoders.pop(task.get('id'), None)
+                    if isinstance(task, dict):
+                        self.decoders.pop(task.get('id'), None)
+                # Drop any UI-internal source-id registrations.
+                pid = manifest.get('id')
+                if pid:
+                    self.ui_internal_sources.discard(pid)
+                for task in manifest.get('tasks', []) or []:
+                    if not isinstance(task, dict):
+                        continue
+                    tid = task.get('id')
+                    if tid:
+                        self.ui_internal_sources.discard(tid)
 
         for provider in providers:
             logger.info("Provider removed: %s (%s)",
@@ -365,3 +396,112 @@ class SystemState:
                         break  # Same group – allowed, continue checking.
 
             return True, None
+
+    # ------------------------------------------------------------------
+    # Pending / authentication helpers
+    # ------------------------------------------------------------------
+    def add_pending_provider(
+        self,
+        sid: str,
+        device_id: str,
+        manifest: Dict[str, Any],
+        manifest_hash: str,
+        client_ip: Optional[str] = None,
+    ) -> None:
+        """Register a provider as awaiting approval (does NOT enter ``providers``)."""
+        with self.atomic_update():
+            self.pending_providers[sid] = {
+                "device_id": device_id,
+                "manifest": manifest,
+                "manifest_hash": manifest_hash,
+                "client_ip": client_ip,
+                "first_seen_at": time.time(),
+            }
+
+    def remove_pending_provider(self, sid: str) -> Optional[Dict[str, Any]]:
+        """Pop a pending entry by sid."""
+        with self.atomic_update():
+            return self.pending_providers.pop(sid, None)
+
+    def get_pending_list(self) -> List[Dict[str, Any]]:
+        """Return a serializable snapshot of all pending providers."""
+        with self.atomic_update():
+            return [
+                {
+                    "device_id": entry["device_id"],
+                    "manifest": entry["manifest"],
+                    "manifest_hash": entry["manifest_hash"],
+                    "client_ip": entry.get("client_ip"),
+                    "first_seen_at": entry.get("first_seen_at"),
+                    "sid": sid,
+                }
+                for sid, entry in self.pending_providers.items()
+            ]
+
+    def find_pending_sid_by_device(self, device_id: str) -> Optional[str]:
+        """Return the sid of the pending provider with given device_id, if any."""
+        with self.atomic_update():
+            for sid, entry in self.pending_providers.items():
+                if entry.get("device_id") == device_id:
+                    return sid
+        return None
+
+    def register_approved_secret(self, sid: str, device_id: str, secret_hex: str) -> None:
+        """Cache an approved provider's secret in memory for fast HMAC verify."""
+        with self.atomic_update():
+            self.approved_secrets[device_id] = secret_hex
+            self.sid_to_device[sid] = device_id
+
+    def get_secret_for_sid(self, sid: str) -> Optional[str]:
+        """Return the cached secret for a session, or ``None`` if not approved."""
+        with self.atomic_update():
+            device_id = self.sid_to_device.get(sid)
+            if device_id is None:
+                return None
+            return self.approved_secrets.get(device_id)
+
+    def get_secret_for_source(self, source_id: str) -> Optional[str]:
+        """Return the cached secret responsible for a given source / task id.
+
+        Looks up the owning provider's manifest by ``source_id`` (which may be
+        the provider id itself or any of its task ids) and returns the secret
+        keyed by ``device_id`` (= manifest['id']). This works correctly even
+        when several providers are multiplexed through one Socket.IO session
+        (e.g. via the bridge daemon).
+        """
+        with self.atomic_update():
+            for p_list in self.providers.values():
+                for provider in p_list:
+                    if provider.get('id') == source_id:
+                        return self.approved_secrets.get(provider['id'])
+                    for task in provider.get('tasks', []) or []:
+                        if task.get('id') == source_id:
+                            pid = provider.get('id')
+                            if pid:
+                                return self.approved_secrets.get(pid)
+                            return None
+        return None
+
+    def drop_session_auth(self, sid: str) -> Optional[str]:
+        """Remove session-level auth state on disconnect. Returns device_id if any."""
+        with self.atomic_update():
+            device_id = self.sid_to_device.pop(sid, None)
+            # Keep ``approved_secrets`` intact across reconnects (TOFU persists).
+            return device_id
+
+
+
+    def issue_auto_approve_token(self, token: str, script: Optional[str] = None) -> None:
+        """Register a one-shot auto-approval token (used by ProcessManager)."""
+        with self.atomic_update():
+            self.auto_approve_tokens[token] = {
+                "issued_at": time.time(),
+                "script": script,
+            }
+
+    def consume_auto_approve_token(self, token: Optional[str]) -> bool:
+        """Atomically consume an auto-approval token. Returns True if valid."""
+        if not isinstance(token, str) or not token:
+            return False
+        with self.atomic_update():
+            return self.auto_approve_tokens.pop(token, None) is not None

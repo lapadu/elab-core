@@ -127,7 +127,7 @@ Geplante Features für UI-seitige oder Server-seitige Regeln, die **nur die Anze
 
 | Aspekt | Vorgabe |
 |--------|---------|
-| **Sprache** | Code & Variablen: Englisch; Dokumentation: Deutsch + Englisch (Projekt-Standard) |
+| **Sprache** | Code, Variablen, Kommentare & Dokumentation: Englisch. Kommunikation mit Entwickler: Deutsch (oder Englisch nach Bedarf) |
 | **Tests** | Neue Features & Bug-Fixes sollten Tests haben |
 | **Commits** | Aussagekräftige Commit-Messages, atomare Änderungen |
 
@@ -290,7 +290,7 @@ Wenn eine Verhaltensänderung stattfindet:
 | [`doc/install.md`](../doc/install.md) | Installations- & Setup-Anleitung |
 | [`doc/deployment.md`](../doc/deployment.md) | Production (systemd, nginx/TLS, Backup) |
 | [`doc/test.md`](../doc/test.md) | Test-Strategie & -Struktur |
-| [`GEMINI.md`](../GEMINI.md) | Projekt-Übersicht (Schnelleinstieg) |
+| [`AGENTS.md`](../AGENTS.md) | Projekt-Übersicht (Schnelleinstieg) |
 
 ---
 

@@ -43,6 +43,7 @@ class TestBridgeDaemonControlMessages:
         daemon = BridgeDaemon.__new__(BridgeDaemon)
         daemon._nodes = {}
         daemon._nodes_lock = threading.Lock()
+        daemon._node_auths = {}
         daemon._running = False
         daemon._sio = MagicMock()
         daemon._sio.connected = True
@@ -182,6 +183,15 @@ class TestBridgeDaemonControlMessages:
         node.shm_channels["task_x"] = ch
         daemon._nodes["n1"] = node
 
+        # Inject an already-approved auth state so the data path signs and
+        # forwards instead of dropping (TOFU policy added in 2026-Q2).
+        from elab_clients_core.python.shared.auth import ProviderAuth  # pylint: disable=import-outside-toplevel
+        auth = ProviderAuth(device_id="n1", persist=False)
+        # pylint: disable=protected-access
+        auth._secret_hex = "ab" * 32
+        auth._approved.set()
+        daemon._node_auths["n1"] = auth
+
         resp = daemon._handle_data_available({
             "type": "data_available",
             "task_id": "task_x",
@@ -189,11 +199,13 @@ class TestBridgeDaemonControlMessages:
             "timestamp_ns": 1000,
         })
         assert resp["status"] == "ok"
-        daemon._sio.emit.assert_called_with("data_stream", {
-            "sourceId": "task_x",
-            "values": [1.0, 2.0],
-            "timestamp": 1e-06,
-        })
+        assert daemon._sio.emit.called
+        event, payload = daemon._sio.emit.call_args[0]
+        assert event == "data_stream"
+        assert payload["sourceId"] == "task_x"
+        assert payload["values"] == [1.0, 2.0]
+        assert payload["timestamp"] == 1e-06
+        assert "auth" in payload and "sig" in payload["auth"]
 
     def test_handle_actor_command_missing_fields(self):
         daemon = self._make_daemon()
@@ -248,6 +260,7 @@ class TestBridgeDaemonForwarding:
         daemon = BridgeDaemon.__new__(BridgeDaemon)
         daemon._nodes = {}
         daemon._nodes_lock = threading.Lock()
+        daemon._node_auths = {}
         daemon._running = False
         daemon._sio = MagicMock()
         daemon._sio.connected = True
