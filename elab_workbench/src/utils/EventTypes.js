@@ -33,6 +33,10 @@ export const SOCKET_EVENTS = {
   TASK_ASSIGNED: 'task_assigned',
   TASK_UNASSIGNED: 'task_unassigned',
   CMD_CONTROL: 'cmd_control',
+
+  // Source→Actuator server-side routing
+  LINK_SOURCE: 'link_source',
+  UNLINK_SOURCE: 'unlink_source',
   
   // Recording control
   SESSION_START: 'session_start',

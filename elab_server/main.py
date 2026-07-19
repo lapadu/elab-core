@@ -18,7 +18,7 @@ from .config_store import ConfigStore
 from .recorder import SessionRecorder
 from .replayer import SessionReplayer
 from .process_manager import ClientProcessManager
-from .discovery import udp_discovery_service, shutdown_event as discovery_shutdown
+from .discovery import start_discovery_service, shutdown_event as discovery_shutdown
 from .sockets import register_socket_handlers
 from ._version import __version__ as ELAB_VERSION
 
@@ -148,8 +148,7 @@ def main():
     register_socket_handlers(socketio, state, recorder, replayer, client_manager)
 
     # Start background threads
-    discovery_thread = threading.Thread(target=udp_discovery_service, daemon=True)
-    discovery_thread.start()
+    start_discovery_service()
 
     # Start the server.
     # When debugpy attaches on Windows it injects a CTRL_C_EVENT into the

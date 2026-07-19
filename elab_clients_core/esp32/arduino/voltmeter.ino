@@ -464,6 +464,12 @@ void socketIOEvent(socketIOmessageType_t type, uint8_t * payload, size_t length)
             else if (eventName == "registration_pending") {
                 Serial.println("\n[AUTH] Geraet wartet auf Operator-Freigabe in der Workbench (Kategorie 'Registrierung').");
             }
+            else if (eventName == "registration_rejected" || eventName == "registration_revoked") {
+                Serial.println("\n[AUTH] Registrierung abgelehnt/widerrufen! Loesche NVS und halte an.");
+                clearSecret();
+                isApproved = false;
+                socketIO.disconnect();
+            }
             else if (eventName == "registration_approved") {
                 JsonObject payloadObj = doc[1];
                 String dev    = payloadObj["deviceId"].as<String>();

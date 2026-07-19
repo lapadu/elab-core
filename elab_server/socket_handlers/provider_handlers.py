@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import logging
 import math
+import threading
 import time
 
 from flask import request
@@ -30,6 +31,123 @@ from ._helpers import (
 
 
 logger = logging.getLogger(__name__)
+
+
+# Per source→actuator route: monotonic timestamp of the last forwarded command.
+# Used to honour an actuator's declared ``maxRateHz`` so constrained targets
+# (e.g. an ESP32) are not flooded by a generator's full-rate chunk stream.
+_actuator_route_ts: dict[tuple[str, str], float] = {}
+_actuator_route_lock = threading.Lock()
+
+
+def _actuator_delivery_prefs(task: dict | None) -> tuple[bool, float]:
+    """Derive delivery constraints from an actuator task's config.
+
+    Returns ``(scalar_only, min_interval_s)``:
+
+    - ``scalar_only``: the actuator declared ``accepts`` without any array/stream
+      capability (e.g. ``["scalar"]``), so it cannot process ``values`` arrays.
+    - ``min_interval_s``: ``1 / maxRateHz`` when a positive ``maxRateHz`` is
+      declared, else ``0`` (no throttling).
+
+    Actuators that declare neither field keep the previous behaviour (full
+    payload, no throttle) for backward compatibility.
+    """
+    scalar_only = False
+    min_interval = 0.0
+    if isinstance(task, dict):
+        config = task.get('config') or {}
+        accepts = config.get('accepts')
+        if isinstance(accepts, list) and accepts:
+            lowered = {str(a).lower() for a in accepts}
+            scalar_only = not lowered & {'array', 'values', 'stream'}
+        rate = config.get('maxRateHz')
+        try:
+            rate_hz = float(rate)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            rate_hz = 0.0
+        if rate_hz > 0.0:
+            min_interval = 1.0 / rate_hz
+    return scalar_only, min_interval
+
+
+def _resolve_actuator_task(state, actuator_id: str) -> dict | None:
+    """Resolve the actuator task carrying the delivery config.
+
+    ``actuator_id`` from an ``actuator_link`` is usually the provider manifest
+    id (the ``prov_`` prefix stripped), while the ``accepts`` / ``maxRateHz``
+    config lives on a task inside that manifest. Match a task by id first, then
+    fall back to the provider's sole/first task.
+    """
+    manifest = state.get_provider_manifest(actuator_id)
+    if not isinstance(manifest, dict):
+        return None
+    tasks = manifest.get('tasks') or []
+    for task in tasks:
+        if isinstance(task, dict) and task.get('id') == actuator_id:
+            return task
+    for task in tasks:
+        if isinstance(task, dict):
+            return task
+    return None
+
+
+def _route_to_actuators(socketio, state, source_id, payload):
+    """Deliver a source's stream directly to any linked actuator providers.
+
+    This is the server-side source→actuator route: instead of the UI polling a
+    stream and echoing scalar control commands back, the dispatcher forwards the
+    payload straight to each linked actuator's session.
+
+    Each actuator's manifest config governs what it receives: ``maxRateHz`` caps
+    the forward rate, and ``accepts`` (when it lists no array capability)
+    down-converts the chunk to a single scalar. This keeps low-power actuators
+    from drowning in a high-rate generator stream (which otherwise saturates the
+    device's receive loop and triggers a watchdog reset).
+    """
+    targets = state.get_actuator_links(source_id)
+    if not targets:
+        return
+
+    now = time.monotonic()
+    for actuator_id in targets:
+        sid = state.find_provider_sid(actuator_id)
+        if not sid:
+            continue
+
+        scalar_only, min_interval = _actuator_delivery_prefs(
+            _resolve_actuator_task(state, actuator_id)
+        )
+
+        # Rate-limit per route to the actuator's declared maxRateHz.
+        if min_interval > 0.0:
+            key = (source_id, actuator_id)
+            with _actuator_route_lock:
+                last = _actuator_route_ts.get(key, 0.0)
+                if now - last < min_interval:
+                    continue
+                _actuator_route_ts[key] = now
+
+        if scalar_only:
+            # Actuator can't handle arrays: send the chunk's representative
+            # scalar (last finite sample) only.
+            command_payload = {
+                'value': _pick_observed_value(payload),
+                'timestamp': payload.get('timestamp'),
+            }
+        else:
+            command_payload = {
+                'value': payload.get('value'),
+                'values': payload.get('values'),
+                'startTime': payload.get('startTime'),
+                'endTime': payload.get('endTime'),
+                'timestamp': payload.get('timestamp'),
+            }
+
+        socketio.emit('execute_command', {
+            'provider_id': f'prov_{actuator_id}',
+            'command': {'action': 'set_value', 'payload': command_payload},
+        }, room=sid)
 
 
 # pylint: disable=too-many-locals, too-many-statements, too-many-branches
@@ -228,6 +346,10 @@ def register(socketio, state, recorder, replayer, client_manager):
         # Forward all data to UI clients, regardless of recording state.
         socketio.emit('data_stream', payload, room='ui_clients')
 
+        # Server-side source→actuator routing (no UI round-trip): deliver the
+        # same stream directly to any actuator linked to this source.
+        _route_to_actuators(socketio, state, source_id, payload)
+
     @socketio.on('task_request')
     def handle_task_request(request_data):
         """Forwards a task request to a specific provider."""
@@ -299,6 +421,30 @@ def register(socketio, state, recorder, replayer, client_manager):
             # Maybe it's a virtual provider on the client, broadcast to all UIs.
             logger.warning("SID for %s not found, broadcasting to UIs", provider_id)
             socketio.emit('execute_command', cmd, room='ui_clients')
+
+    @socketio.on('link_source')
+    def handle_link_source(data):
+        """Bind a data source to an actuator; dispatcher routes it directly."""
+        if not isinstance(data, dict):
+            return
+        source_id = data.get('source_id') or data.get('sourceId')
+        actuator_id = (data.get('actuator_id') or '').replace('prov_', '')
+        if not source_id or not actuator_id:
+            return
+        state.add_actuator_link(source_id, actuator_id)
+        logger.info("Linked source %s -> actuator %s", source_id, actuator_id)
+
+    @socketio.on('unlink_source')
+    def handle_unlink_source(data):
+        """Remove a source→actuator route."""
+        if not isinstance(data, dict):
+            return
+        source_id = data.get('source_id') or data.get('sourceId')
+        actuator_id = (data.get('actuator_id') or '').replace('prov_', '')
+        if not source_id or not actuator_id:
+            return
+        state.remove_actuator_link(source_id, actuator_id)
+        logger.info("Unlinked source %s -> actuator %s", source_id, actuator_id)
 
     @socketio.on('provider_meta_changed')
     def handle_provider_meta_changed(data):

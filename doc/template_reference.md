@@ -65,8 +65,8 @@ export const ExampleTemplate = {
 
 ## Overview
 
-- Defined templates: 14
-- Template references: 16
+- Defined templates: 15
+- Template references: 18
 - Unknown references: 0
 
 ## Template Definitions
@@ -87,6 +87,7 @@ export const ExampleTemplate = {
 | `tpl_scope` | Scope Graph | `ScopeGraphPlugin` | Object | `elab_workbench/src/plugins/core/templates/ScopeWidget.jsx` | 2 |
 | `tpl_spectrum` | Spectrum Graph | `SpectrumGraphPlugin` | Object | `elab_workbench/src/plugins/core/templates/SpectrumWidget.jsx` | 2 |
 | `tpl_spectrum_config` | Spectrum Config | `SpectrumConfigPlugin` | Object | `elab_workbench/src/plugins/core/templates/SpectrumConfigWidget.jsx` | 1 |
+| `website_project_info` | e_Lab Project Info | `ProjectInfoPlugin` | PluginBuilder | `elab_workbench/src/plugins/website/ProjectInfo.jsx` | 2 |
 
 ## Template Usage
 
@@ -108,6 +109,8 @@ export const ExampleTemplate = {
 | `tpl_spectrum` | `defaultTemplate` | `elab_workbench/src/plugins/Spectrum.jsx` |
 | `tpl_spectrum` | `template` | `elab_workbench/src/plugins/Spectrum.jsx` |
 | `tpl_spectrum_config` | `template` | `elab_workbench/src/plugins/Spectrum.jsx` |
+| `website_project_info` | `defaultTemplate` | `elab_workbench/src/App.jsx` |
+| `website_project_info` | `template` | `elab_workbench/src/App.jsx` |
 
 ## Core Template Files
 

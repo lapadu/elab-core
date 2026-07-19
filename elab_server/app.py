@@ -119,6 +119,26 @@ def register_routes(state):
         schema_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'schemas'))
         return send_from_directory(schema_dir, 'ManifestSchema.json')
 
+    @app.route('/api/discovery/disable', methods=['POST'])
+    def disable_discovery():
+        """Disables the UDP discovery service."""
+        from .discovery import stop_discovery_service
+        stop_discovery_service()
+        return {'status': 'disabled', 'enabled': False}
+        
+    @app.route('/api/discovery/enable', methods=['POST'])
+    def enable_discovery():
+        """Enables the UDP discovery service."""
+        from .discovery import start_discovery_service
+        start_discovery_service()
+        return {'status': 'enabled', 'enabled': True}
+
+    @app.route('/api/discovery/status', methods=['GET'])
+    def discovery_status():
+        """Returns the status of the UDP discovery service."""
+        from .discovery import shutdown_event
+        return {'enabled': not shutdown_event.is_set()}
+
 # --- IP ADDRESS MANAGEMENT ---
 
 def get_ip_addresses():

@@ -429,15 +429,11 @@ def register(socketio, state, recorder, replayer, client_manager):
             return
         logger.info("⛔ Revoked credential for device %s", device_id)
 
-        # If currently connected & approved, disconnect it.
+        # If currently connected & approved, let it disconnect itself.
         sid = state.find_provider_sid(device_id)
         if sid is not None:
-            # Inform the device first so it can wipe its local secret.
+            # Inform the device so it can wipe its local secret and disconnect cleanly.
             socketio.emit('registration_revoked', {'deviceId': device_id}, room=sid)
-            try:
-                socketio.server.disconnect(sid)
-            except (OSError, RuntimeError, ValueError) as e:
-                logger.error("Could not disconnect revoked device %s: %s", sid, e)
 
         # Refresh views.
         socketio.emit('available_providers',

@@ -13,7 +13,7 @@ simple-websocket>=1.0
 jsonschema>=4.20
 
 # Utilities
-python-socketio>=5.10
+python-socketio[client]>=5.10
 
 # Local API Bridge (ZeroMQ + Shared Memory IPC)
 pyzmq>=25.0

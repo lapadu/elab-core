@@ -2,7 +2,7 @@
 
 _Auto-generated file. Do not edit manually._
 
-Generated: 2026-05-25 08:30:18 UTC
+Generated: 2026-07-08 12:55:08 UTC
 
 ## elab_api/__init__.py
 

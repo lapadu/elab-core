@@ -220,3 +220,33 @@ Geräte mit neuer Firmware/Client-Lib laufen, werden alle eingehenden
 3. Geräte sukzessive aktualisieren und in der Workbench freigeben.
 4. Wenn alle Geräte umgestellt sind, `ELAB_REQUIRE_AUTH` wieder
    entfernen → Default `true`.
+
+---
+
+## 11. Managing the Discovery Service in the Local Network
+
+By default, the E-Lab Dispatcher sends UDP broadcast packets so that clients in the local network can automatically discover and connect to the server ("zero-config"). In restrictive networks or for security reasons, this service can be disabled at runtime.
+
+### Control Endpoints
+
+The discovery service can be controlled via REST API calls:
+
+- **Disable Discovery:**
+  ```bash
+  # Windows PowerShell users: use curl.exe instead of curl
+  curl.exe -X POST http://<server-ip>:5000/api/discovery/disable
+  ```
+  *(Prevents the server from sending further UDP broadcasts)*
+
+- **Enable Discovery:**
+  ```bash
+  curl.exe -X POST http://<server-ip>:5000/api/discovery/enable
+  ```
+
+- **Check Status:**
+  ```bash
+  curl.exe http://<server-ip>:5000/api/discovery/status
+  ```
+  *(Responds with e.g. `{"enabled": true}`)*
+
+**Note:** Disabling this service only affects the automatic device discovery. Existing TCP/WebSocket connections and clients that connect using a hardcoded IP address will remain fully functional.

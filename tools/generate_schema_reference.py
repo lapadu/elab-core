@@ -45,6 +45,8 @@ _DESC_FALLBACKS: dict[str, str] = {
     "config.medianGroupSize": "Optional window/group size used by median-style processors.",
     "config.dmaBufferSamples": "Optional DMA buffer size in samples for hardware-backed streams.",
     "config.noiseEnabled": "Optional flag to enable/disable synthetic noise in generator tasks.",
+    "config.accepts": "Optional input capability hint for ACTUATOR tasks. Use values like scalar, array, values, stream to declare supported command payload shapes. Example: [\"scalar\"] for constrained devices that only consume single values.",
+    "config.maxRateHz": "Optional upper bound for command delivery rate to this task (commands per second). The dispatcher may throttle source→actuator forwarding to this rate to protect resource-constrained clients (for example ESP32).",
     "config.singleSource": "Optional flag that limits this task to one upstream input source.",
     "config.providerId": "Optional provider reference used by virtual/system tasks.",
     "config.configFields": "Definition of generic configuration UI elements (see below).",

@@ -123,6 +123,15 @@
             "medianGroupSize": { "type": "number" },
             "dmaBufferSamples": { "type": "number" },
             "noiseEnabled": { "type": "boolean" },
+            "accepts": {
+              "type": "array",
+              "description": "Optional input capability hint for ACTUATOR tasks. Use values like scalar, array, values, stream to declare supported command payload shapes.",
+              "items": { "type": "string" }
+            },
+            "maxRateHz": {
+              "type": "number",
+              "description": "Optional upper bound for command delivery rate to this task (commands per second)."
+            },
             "singleSource": { "type": "boolean" },
             "providerId": { "type": "string" },
             "configFields": {

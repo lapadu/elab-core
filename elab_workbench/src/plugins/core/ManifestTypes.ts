@@ -92,6 +92,14 @@ export interface Task {
     medianGroupSize?: number;
     dmaBufferSamples?: number;
     noiseEnabled?: boolean;
+    /**
+     * Optional input capability hint for ACTUATOR tasks. Use values like scalar, array, values, stream to declare supported command payload shapes.
+     */
+    accepts?: string[];
+    /**
+     * Optional upper bound for command delivery rate to this task (commands per second).
+     */
+    maxRateHz?: number;
     singleSource?: boolean;
     providerId?: string;
     configFields?: {

@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Module-level shutdown signal so main.py can request a clean stop.
 shutdown_event = threading.Event()
+_discovery_thread: Optional[threading.Thread] = None
 
 def get_broadcast_addresses():
     """Calculates broadcast addresses for all local IP addresses."""
@@ -33,6 +34,19 @@ def get_broadcast_addresses():
     broadcast_addrs.add("255.255.255.255")
 
     return list(broadcast_addrs)
+
+def start_discovery_service():
+    """Starts the UDP discovery service if not already running."""
+    global _discovery_thread
+    if _discovery_thread and _discovery_thread.is_alive():
+        return
+    shutdown_event.clear()
+    _discovery_thread = threading.Thread(target=udp_discovery_service, daemon=True)
+    _discovery_thread.start()
+
+def stop_discovery_service():
+    """Signals the UDP discovery service to stop."""
+    shutdown_event.set()
 
 def udp_discovery_service(stop_event: Optional[threading.Event] = None) -> None:
     """Broadcasts server information via UDP until *stop_event* is set."""

@@ -48,6 +48,11 @@ class SystemState:
         # These bypass TOFU/HMAC because the originating socket is already a
         # trusted UI client; the provider effectively is the UI.
         self.ui_internal_sources: set[str] = set()
+        # Server-side source→actuator routing. Maps a data ``source_id`` to the
+        # set of actuator provider ids that should receive that source's stream
+        # directly as ``execute_command`` (no UI round-trip). Populated by the
+        # UI when a source is linked to an actuator widget.
+        self.actuator_links: Dict[str, set[str]] = {}
 
     @contextmanager
     def atomic_update(self):
@@ -180,6 +185,10 @@ class SystemState:
                     if tid:
                         self.ui_internal_sources.discard(tid)
 
+            # Drop source→actuator routes that referenced this provider,
+            # whether it was the source or the actuator target.
+            self._purge_actuator_links(providers)
+
         for provider in providers:
             logger.info("Provider removed: %s (%s)",
                         provider.get('name'), sid)
@@ -202,6 +211,47 @@ class SystemState:
             return None
         with self.atomic_update():
             return self._provider_sid_index.get(provider_id)
+
+    def _purge_actuator_links(self, providers: List[Dict[str, Any]]) -> None:
+        """Remove source→actuator routes referencing the removed providers.
+
+        Called from within ``remove_provider``'s ``atomic_update`` block; the
+        RLock is reentrant so nested acquisition below is safe.
+        """
+        gone: set = set()
+        for manifest in providers:
+            if manifest.get('id'):
+                gone.add(manifest['id'])
+            for task in manifest.get('tasks', []) or []:
+                if isinstance(task, dict) and task.get('id'):
+                    gone.add(task['id'])
+        for gid in gone:
+            self.actuator_links.pop(gid, None)
+        for src, targets in list(self.actuator_links.items()):
+            targets -= gone
+            if not targets:
+                self.actuator_links.pop(src, None)
+
+    def add_actuator_link(self, source_id: str, actuator_id: str) -> None:
+        """Route a data source directly to an actuator provider."""
+        if not source_id or not actuator_id:
+            return
+        with self.atomic_update():
+            self.actuator_links.setdefault(source_id, set()).add(actuator_id)
+    def remove_actuator_link(self, source_id: str, actuator_id: str) -> None:
+        """Remove a single source→actuator route."""
+        with self.atomic_update():
+            targets = self.actuator_links.get(source_id)
+            if targets:
+                targets.discard(actuator_id)
+                if not targets:
+                    self.actuator_links.pop(source_id, None)
+
+    def get_actuator_links(self, source_id: str) -> List[str]:
+        """Return a copy of the actuator ids linked to a source."""
+        with self.atomic_update():
+            targets = self.actuator_links.get(source_id)
+            return list(targets) if targets else []
 
     def get_provider_manifest(self, provider_id):
         """Returns the manifest of a provider."""

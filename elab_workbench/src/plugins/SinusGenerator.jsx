@@ -81,8 +81,13 @@ export const SineGenClientPlugin = new PluginBuilder("plugin_sine_gen_v1", "Clie
     .setSimulation({
         alwaysRun: true,
         factory: (initialTask, dispatcher) => {
-            const CHUNK_SIZE = 1024;
-            const SAMPLE_RATE = 2000;
+            // Emit real-time-aligned chunks so 1 s of signal == 1 s of wall
+            // clock. A continuous phase accumulator (NCO) keeps the waveform
+            // clean across chunks and across live frequency changes.
+            const EMIT_INTERVAL_MS = 50; // chunk cadence (wall clock)
+            const SAMPLE_RATE = 2000; // Hz -> 20 samples/period at 100 Hz
+            const SAMPLE_PERIOD_MS = 1000 / SAMPLE_RATE;
+            const MAX_SAMPLES_PER_CHUNK = SAMPLE_RATE; // cap 1 s backlog
 
             let currentConfig = { ...initialTask.config };
 
@@ -110,37 +115,47 @@ export const SineGenClientPlugin = new PluginBuilder("plugin_sine_gen_v1", "Clie
                 dispatcher.socket.on("provider_meta_changed", metaChangedHandler);
             }
 
-            let lastEndTime = 0;
+            let phase = 0; // radians, continuous oscillator phase
+            let nextSampleTime = Date.now(); // wall-clock time of next sample
             const intervalId = setInterval(() => {
                 const freq = Number(currentConfig.frequency) || 1;
                 const amp = Number(currentConfig.amplitude) || 5;
                 const noiseEnabled = currentConfig.noiseEnabled ?? true;
                 const noiseLevel = currentConfig.noiseLevel || 0.1;
 
+                // Emit exactly as many samples as fit into the elapsed wall
+                // time, so the signal clock advances at 1x real time.
                 const now = Date.now();
-                const durationMs = (CHUNK_SIZE / SAMPLE_RATE) * 1000;
-                let startTime = now - durationMs;
-                let endTime = now;
-
-                // Prevent backwards time jumps by moving overlapping chunks forward.
-                if (lastEndTime && startTime <= lastEndTime) {
-                    startTime = lastEndTime + 1;
-                    endTime = startTime + durationMs;
+                let count = Math.floor((now - nextSampleTime) / SAMPLE_PERIOD_MS);
+                if (count <= 0) return;
+                if (count > MAX_SAMPLES_PER_CHUNK) {
+                    // Drop stale backlog (e.g. throttled background tab) instead
+                    // of emitting a large catch-up burst.
+                    nextSampleTime = now - MAX_SAMPLES_PER_CHUNK * SAMPLE_PERIOD_MS;
+                    count = MAX_SAMPLES_PER_CHUNK;
                 }
 
+                const startTime = nextSampleTime;
+                const phaseInc = 2 * Math.PI * freq * (SAMPLE_PERIOD_MS / 1000);
                 const values = [];
-                for (let i = 0; i < CHUNK_SIZE; i++) {
-                    const tMs = startTime + (i / SAMPLE_RATE) * 1000;
-                    const tSec = tMs / 1000;
-                    // Generate the sine signal.
-                    let val = amp * Math.sin(2 * Math.PI * freq * tSec);
+                for (let i = 0; i < count; i++) {
+                    let val = amp * Math.sin(phase);
                     if (noiseEnabled) {
                         val += (Math.random() - 0.5) * amp * noiseLevel;
                     }
                     values.push(val);
+                    phase += phaseInc;
                 }
+                // Keep the accumulator bounded without disturbing continuity.
+                phase %= 2 * Math.PI;
 
-                lastEndTime = endTime;
+                // endTime is the timestamp of the LAST sample (inclusive), to
+                // match the canonical linear reconstruction dt = span/(count-1)
+                // used by the workbench and actuator. Advancing nextSampleTime
+                // by one extra period places the next chunk's first sample right
+                // after this chunk's last one — no overlap, no boundary jump.
+                const endTime = startTime + (count - 1) * SAMPLE_PERIOD_MS;
+                nextSampleTime = startTime + count * SAMPLE_PERIOD_MS;
 
                 const payload = {
                     // Use the original task ID (if present) so that viewers and other
@@ -158,7 +173,7 @@ export const SineGenClientPlugin = new PluginBuilder("plugin_sine_gen_v1", "Clie
                 if (dispatcher.socket?.connected) {
                     dispatcher.socket.emit("data_stream", payload);
                 }
-            }, 50);
+            }, EMIT_INTERVAL_MS);
 
             return () => {
                 clearInterval(intervalId);

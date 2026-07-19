@@ -179,6 +179,20 @@ Used by UI to send a control command (e.g. settings change) to a specific hardwa
 
 - **Server Action:** Forwards the command to the specific provider's Socket.IO session via `execute_command`.
 
+### `link_source` / `unlink_source`
+
+Sent by the UI when a data source is connected to (or disconnected from) an
+actuator widget. While a link exists, the dispatcher forwards that source's
+`data_stream` **directly** to the actuator provider as `execute_command`
+(`action: "set_value"`, carrying `value`/`values`/`startTime`/`endTime`), in
+addition to the normal `data_stream` broadcast to UI clients. This removes the
+UI from the control path (no periodic polling / 20 Hz aliasing).
+
+- **Payload:** `{ "source_id": "hw_sine_ch1", "actuator_id": "prov_py_voltage_actuator_123" }`
+- **Server Action:** Adds/removes a `source_id → actuator_id` route in
+  `SystemState.actuator_links`. Routes are cleaned up automatically when either
+  the source or the actuator provider disconnects.
+
 ### `provider_meta_changed`
 
 Used when a provider updates its own metadata (like display name or color).

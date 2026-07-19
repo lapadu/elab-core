@@ -1,9 +1,9 @@
-﻿/* eslint-disable react-refresh/only-export-components */
+/* eslint-disable react-refresh/only-export-components */
 import React from 'react';
 import { 
   Activity, AlertCircle, AlertTriangle, Archive, BarChart2, Calculator, Camera, Check, ChevronDown, ChevronRight, 
   ChevronsLeft, ChevronsRight, Circle, Code, Cpu, Database, Download, Eye, EyeOff, FileCode, FileJson, 
-  FileSpreadsheet, Grid, Grid2x2, Grid3x2, Inbox, Info, Layers, Layout, ListChevronsUpDown, ListCollapse, Loader2, Maximize, Maximize2, Minimize, MousePointer2,
+  FileSpreadsheet, Grid, Grid2x2, Grid3x2, Inbox, Info, Layers, Layout, Link, ListChevronsUpDown, ListCollapse, Loader2, Maximize, Maximize2, Minimize, MousePointer2,
   Menu, Move, Palette, Pause, Play, Plus, Radio, RefreshCw, RotateCcw, Save, Send, Server, Settings, ShieldAlert,
   Sigma, Square, Sidebar, Table, Target, Thermometer, Trash2, Video, Wifi, WifiOff, X, Zap, ChevronsDown, Table2
 } from 'lucide-react';
@@ -91,7 +91,7 @@ export function applySystemColorsToRoot(root = typeof document !== 'undefined' ?
 export const Icons = {
     Activity, Settings, Zap, Wifi, Move, Trash2, Maximize2, Save, Radio, Cpu, RotateCcw, 
     Thermometer, Video, Download, RefreshCw, Server, Code, Database, Calculator, Layers, 
-    Plus, Layout, Eye, EyeOff, FileJson, X, Grid, Grid2x2, Grid3x2, Sidebar, Table, Target, FileSpreadsheet, Sigma, ChevronRight, 
+    Plus, Layout, Link, Eye, EyeOff, FileJson, X, Grid, Grid2x2, Grid3x2, Sidebar, Table, Target, FileSpreadsheet, Sigma, ChevronRight, 
     ChevronDown, ListChevronsUpDown, ListCollapse, Palette, Play, MousePointer2, Square, Circle, AlertTriangle, Loader2, WifiOff, Pause,
     FileCode, Inbox, AlertCircle, Info, ChevronsLeft, ChevronsRight, Check, Archive, Minimize, Maximize,
     Send, Camera, BarChart2, ChevronsDown, Table2, Menu, ShieldAlert

@@ -2,7 +2,7 @@
 
 _Auto-generated from `schemas/ManifestSchema.json`. Do not edit manually._
 
-Generated: 2026-05-24 09:25:04 UTC
+Generated: 2026-07-13 08:01:05 UTC
 
 To ensure consistency and stability in the distributed E-Lab system, manifests are validated by a central JSON schema.
 
@@ -135,6 +135,8 @@ DEVICE_MANIFEST = builder.build()
 | `medianGroupSize` | `number` | optional | Optional window/group size used by median-style processors. |
 | `dmaBufferSamples` | `number` | optional | Optional DMA buffer size in samples for hardware-backed streams. |
 | `noiseEnabled` | `boolean` | optional | Optional flag to enable/disable synthetic noise in generator tasks. |
+| `accepts` | `string[]` | optional | Optional input capability hint for ACTUATOR tasks. Use values like scalar, array, values, stream to declare supported command payload shapes. |
+| `maxRateHz` | `number` | optional | Optional upper bound for command delivery rate to this task (commands per second). |
 | `singleSource` | `boolean` | optional | Optional flag that limits this task to one upstream input source. |
 | `providerId` | `string` | optional | Optional provider reference used by virtual/system tasks. |
 | `configFields` | `object[]` | optional | Definition of generic configuration UI elements (see below). |

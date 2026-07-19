@@ -857,3 +857,207 @@ class TestLastUiDisconnectClearsSlots:
         client.disconnect()
 
         assert len(state.active_tasks_by_slot) == 0
+
+
+class TestSourceActuatorRouting:
+    """Server-side source→actuator routing via link_source/unlink_source."""
+
+    @staticmethod
+    def _actuator_manifest():
+        manifest = copy.deepcopy(VALID_MANIFEST)
+        manifest["id"] = "test_actuator"
+        manifest["tasks"] = [
+            {
+                "id": "test_actuator_task",
+                "name": "Test Actuator",
+                "type": "ACTUATOR",
+                "ui": {"mode": "generic"},
+                "config": {"unit": "V"},
+            }
+        ]
+        return manifest
+
+    def test_linked_actuator_receives_stream(self, client, state):
+        """A linked actuator should receive the source stream as execute_command."""
+        from elab_server.app import app, socketio
+
+        source = socketio.test_client(app)
+        source.emit("register_provider", copy.deepcopy(VALID_MANIFEST))
+
+        actuator = socketio.test_client(app)
+        actuator.emit("register_provider", self._actuator_manifest())
+        actuator.get_received()  # clear
+
+        client.emit(
+            "link_source",
+            {"source_id": "test_task_1", "actuator_id": "prov_test_actuator"},
+        )
+
+        source.emit(
+            "data_stream",
+            {
+                "sourceId": "test_task_1",
+                "value": 4.2,
+                "values": [1.0, 2.0, 4.2],
+                "startTime": 1000,
+                "endTime": 2000,
+                "timestamp": time.time() * 1000,
+            },
+        )
+
+        received = actuator.get_received()
+        exec_events = [r for r in received if r["name"] == "execute_command"]
+        assert len(exec_events) >= 1
+        cmd = exec_events[0]["args"][0]["command"]
+        assert cmd["action"] == "set_value"
+        assert cmd["payload"]["values"] == [1.0, 2.0, 4.2]
+        assert cmd["payload"]["value"] == 4.2
+
+        source.disconnect()
+        actuator.disconnect()
+
+    def test_unlink_stops_routing(self, client, state):
+        """After unlink_source, no further stream should reach the actuator."""
+        from elab_server.app import app, socketio
+
+        source = socketio.test_client(app)
+        source.emit("register_provider", copy.deepcopy(VALID_MANIFEST))
+        actuator = socketio.test_client(app)
+        actuator.emit("register_provider", self._actuator_manifest())
+
+        client.emit(
+            "link_source",
+            {"source_id": "test_task_1", "actuator_id": "prov_test_actuator"},
+        )
+        client.emit(
+            "unlink_source",
+            {"source_id": "test_task_1", "actuator_id": "prov_test_actuator"},
+        )
+        actuator.get_received()  # clear
+
+        source.emit(
+            "data_stream",
+            {"sourceId": "test_task_1", "value": 1.0, "timestamp": time.time() * 1000},
+        )
+
+        received = actuator.get_received()
+        exec_events = [r for r in received if r["name"] == "execute_command"]
+        assert len(exec_events) == 0
+
+        source.disconnect()
+        actuator.disconnect()
+
+    def test_disconnect_clears_links(self, client, state):
+        """Disconnecting the source provider should purge its actuator links."""
+        from elab_server.app import app, socketio
+
+        source = socketio.test_client(app)
+        source.emit("register_provider", copy.deepcopy(VALID_MANIFEST))
+        actuator = socketio.test_client(app)
+        actuator.emit("register_provider", self._actuator_manifest())
+
+        client.emit(
+            "link_source",
+            {"source_id": "test_task_1", "actuator_id": "prov_test_actuator"},
+        )
+        assert state.get_actuator_links("test_task_1") == ["test_actuator"]
+
+        source.disconnect()
+
+        assert state.get_actuator_links("test_task_1") == []
+
+        actuator.disconnect()
+
+    @staticmethod
+    def _constrained_actuator_manifest():
+        """Actuator that accepts only scalars and caps its rate (like an ESP32)."""
+        manifest = copy.deepcopy(VALID_MANIFEST)
+        manifest["id"] = "test_actuator"
+        manifest["tasks"] = [
+            {
+                "id": "test_actuator_task",
+                "name": "Test Actuator",
+                "type": "ACTUATOR",
+                "ui": {"mode": "generic"},
+                "config": {"unit": "V", "accepts": ["scalar"], "maxRateHz": 10},
+            }
+        ]
+        return manifest
+
+    def test_scalar_only_actuator_gets_no_values_array(self, client, state):
+        """An actuator declaring accepts=['scalar'] receives a scalar, no array."""
+        from elab_server.app import app, socketio
+        from elab_server.socket_handlers import provider_handlers
+
+        provider_handlers._actuator_route_ts.clear()
+
+        source = socketio.test_client(app)
+        source.emit("register_provider", copy.deepcopy(VALID_MANIFEST))
+        actuator = socketio.test_client(app)
+        actuator.emit("register_provider", self._constrained_actuator_manifest())
+        actuator.get_received()  # clear
+
+        client.emit(
+            "link_source",
+            {"source_id": "test_task_1", "actuator_id": "prov_test_actuator"},
+        )
+
+        source.emit(
+            "data_stream",
+            {
+                "sourceId": "test_task_1",
+                "value": 4.2,
+                "values": [1.0, 2.0, 4.2],
+                "startTime": 1000,
+                "endTime": 2000,
+                "timestamp": time.time() * 1000,
+            },
+        )
+
+        received = actuator.get_received()
+        exec_events = [r for r in received if r["name"] == "execute_command"]
+        assert len(exec_events) == 1
+        payload = exec_events[0]["args"][0]["command"]["payload"]
+        assert payload.get("values") is None
+        assert payload["value"] == 4.2
+
+        source.disconnect()
+        actuator.disconnect()
+
+    def test_max_rate_throttles_rapid_stream(self, client, state):
+        """Two back-to-back chunks to a maxRateHz=10 actuator yield one command."""
+        from elab_server.app import app, socketio
+        from elab_server.socket_handlers import provider_handlers
+
+        provider_handlers._actuator_route_ts.clear()
+
+        source = socketio.test_client(app)
+        source.emit("register_provider", copy.deepcopy(VALID_MANIFEST))
+        actuator = socketio.test_client(app)
+        actuator.emit("register_provider", self._constrained_actuator_manifest())
+        actuator.get_received()  # clear
+
+        client.emit(
+            "link_source",
+            {"source_id": "test_task_1", "actuator_id": "prov_test_actuator"},
+        )
+
+        for value in (1.0, 2.0):
+            source.emit(
+                "data_stream",
+                {
+                    "sourceId": "test_task_1",
+                    "value": value,
+                    "values": [value],
+                    "timestamp": time.time() * 1000,
+                },
+            )
+
+        received = actuator.get_received()
+        exec_events = [r for r in received if r["name"] == "execute_command"]
+        # The second chunk arrives well within the 100 ms window → dropped.
+        assert len(exec_events) == 1
+        assert exec_events[0]["args"][0]["command"]["payload"]["value"] == 1.0
+
+        source.disconnect()
+        actuator.disconnect()

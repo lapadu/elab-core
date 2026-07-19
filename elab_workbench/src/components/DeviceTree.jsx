@@ -484,10 +484,28 @@ export const DeviceTree = memo(
                             )}
                           </div>
                         </div>
-                        <Icons.Move
-                          size={12}
-                          className="text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                        />
+                        <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {!dev.isFactory && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const targetId = dev.providerId || dev.id;
+                                if (window.confirm(`Möchtest du das Gerät '${dev.name}' (${targetId}) wirklich entkoppeln?`)) {
+                                  onRevokeDevice?.(targetId);
+                                }
+                              }}
+                              className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                              title="Gerät entkoppeln (Revoke)"
+                            >
+                              <Icons.Trash2 size={12} />
+                            </button>
+                          )}
+                          <Icons.Move
+                            size={12}
+                            className="text-slate-600 cursor-grab active:cursor-grabbing"
+                          />
+                        </div>
                       </div>
                     );
                   })}

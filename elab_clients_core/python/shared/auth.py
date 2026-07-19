@@ -190,6 +190,7 @@ class ProviderAuth:
         def _revoked(data):
             logger.warning("⛔ Provider %s credential revoked: %r", self.device_id, data)
             self.forget()
+            sio.disconnect()
             if self._on_revoked:
                 try:
                     self._on_revoked(data or {})

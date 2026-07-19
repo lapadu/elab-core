@@ -70,8 +70,8 @@ class DispatcherClient {
           window.__ELAB_SERVER_ORIGIN__ = this.socket?.io?.uri || null;
         }
       } catch { /* ignore */ }
-      this._emit(APP_EVENTS.ON_CONNECTION_ESTABLISHED, data);
       this.registerClient();
+      this._emit(APP_EVENTS.ON_CONNECTION_ESTABLISHED, data);
       this.getAvailableScripts();
       this.getSessions();
     });
@@ -229,6 +229,22 @@ class DispatcherClient {
       command: command,
       session_id: this.sessionId,
       timestamp: Date.now()
+    });
+  }
+
+  linkSource(sourceId, actuatorProviderId) {
+    if (!this.socket) return;
+    this.socket.emit(SOCKET_EVENTS.LINK_SOURCE, {
+      source_id: sourceId,
+      actuator_id: actuatorProviderId,
+    });
+  }
+
+  unlinkSource(sourceId, actuatorProviderId) {
+    if (!this.socket) return;
+    this.socket.emit(SOCKET_EVENTS.UNLINK_SOURCE, {
+      source_id: sourceId,
+      actuator_id: actuatorProviderId,
     });
   }
 

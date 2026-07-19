@@ -9,13 +9,13 @@ This document lists all Tailwind CSS classes available in the E-Lab project.
 External plugin developers can use these classes in custom UI plugins without
 needing to modify the core Tailwind configuration.
 
-**Total Classes Found:** 407
-**Total Icons Found:** 66
+**Total Classes Found:** 452
+**Total Icons Found:** 68
 **Palette Colors Found:** 12
 **System Colors Found:** 17
-**Hex Colors in Source (without COLOR_PALETTE and SYSTEM_COLORS):** 4
+**Hex Colors in Source (without COLOR_PALETTE and SYSTEM_COLORS):** 11
 **Custom Plugin Classes:** 4
-**Generated:** 2026-05-25 10:31:10
+**Generated:** 2026-07-08 14:54:40
 
 ## Usage
 
@@ -45,193 +45,199 @@ export function MyCustomWidget() {
 | `.perspective-1000` | Custom Plugin | - | CSS `perspective: 1000px` | [Preview](ui_reference_preview.html#cls-perspective-1000) |
 | `.rotate-y-180` | Custom Plugin | - | CSS `transform: rotateY(180deg)` | [Preview](ui_reference_preview.html#cls-rotate-y-180) |
 | `.transform-style-3d` | Custom Plugin | - | CSS `transformStyle: preserve-3d` | [Preview](ui_reference_preview.html#cls-transform-style-3d) |
-| `.flex` | Tailwind Built-in | 159 | - | [Preview](ui_reference_preview.html#cls-flex) |
-| `.text-xs` | Tailwind Built-in | 133 | - | [Preview](ui_reference_preview.html#cls-text-xs) |
-| `.items-center` | Tailwind Built-in | 118 | - | [Preview](ui_reference_preview.html#cls-items-center) |
-| `.rounded` | Tailwind Built-in | 112 | - | [Preview](ui_reference_preview.html#cls-rounded) |
-| `.font-bold` | Tailwind Built-in | 86 | - | [Preview](ui_reference_preview.html#cls-font-bold) |
-| `.border` | Tailwind Built-in | 85 | - | [Preview](ui_reference_preview.html#cls-border) |
-| `.gap-2` | Tailwind Built-in | 65 | - | [Preview](ui_reference_preview.html#cls-gap-2) |
-| `.text-slate-500` | Tailwind Built-in | 63 | - | [Preview](ui_reference_preview.html#cls-text-slate-500) |
-| `.text-slate-400` | Tailwind Built-in | 52 | - | [Preview](ui_reference_preview.html#cls-text-slate-400) |
-| `.border-slate-700` | Tailwind Built-in | 51 | - | [Preview](ui_reference_preview.html#cls-border-slate-700) |
-| `.w-full` | Tailwind Built-in | 48 | - | [Preview](ui_reference_preview.html#cls-w-full) |
-| `.rounded-full` | Tailwind Built-in | 46 | - | [Preview](ui_reference_preview.html#cls-rounded-full) |
-| `.bg-slate-900` | Tailwind Built-in | 45 | - | [Preview](ui_reference_preview.html#cls-bg-slate-900) |
+| `.flex` | Tailwind Built-in | 176 | - | [Preview](ui_reference_preview.html#cls-flex) |
+| `.text-xs` | Tailwind Built-in | 142 | - | [Preview](ui_reference_preview.html#cls-text-xs) |
+| `.items-center` | Tailwind Built-in | 130 | - | [Preview](ui_reference_preview.html#cls-items-center) |
+| `.rounded` | Tailwind Built-in | 126 | - | [Preview](ui_reference_preview.html#cls-rounded) |
+| `.font-bold` | Tailwind Built-in | 97 | - | [Preview](ui_reference_preview.html#cls-font-bold) |
+| `.border` | Tailwind Built-in | 91 | - | [Preview](ui_reference_preview.html#cls-border) |
+| `.gap-2` | Tailwind Built-in | 73 | - | [Preview](ui_reference_preview.html#cls-gap-2) |
+| `.text-slate-500` | Tailwind Built-in | 69 | - | [Preview](ui_reference_preview.html#cls-text-slate-500) |
+| `.text-slate-400` | Tailwind Built-in | 56 | - | [Preview](ui_reference_preview.html#cls-text-slate-400) |
+| `.border-slate-700` | Tailwind Built-in | 52 | - | [Preview](ui_reference_preview.html#cls-border-slate-700) |
+| `.w-full` | Tailwind Built-in | 52 | - | [Preview](ui_reference_preview.html#cls-w-full) |
+| `.transition-colors` | Tailwind Built-in | 50 | - | [Preview](ui_reference_preview.html#cls-transition-colors) |
+| `.uppercase` | Tailwind Built-in | 50 | - | [Preview](ui_reference_preview.html#cls-uppercase) |
+| `.bg-slate-900` | Tailwind Built-in | 48 | - | [Preview](ui_reference_preview.html#cls-bg-slate-900) |
+| `.rounded-full` | Tailwind Built-in | 48 | - | [Preview](ui_reference_preview.html#cls-rounded-full) |
+| `.mb-2` | Tailwind Built-in | 46 | - | [Preview](ui_reference_preview.html#cls-mb-2) |
 | `.h-full` | Tailwind Built-in | 45 | - | [Preview](ui_reference_preview.html#cls-h-full) |
-| `.uppercase` | Tailwind Built-in | 45 | - | [Preview](ui_reference_preview.html#cls-uppercase) |
-| `.mb-2` | Tailwind Built-in | 42 | - | [Preview](ui_reference_preview.html#cls-mb-2) |
-| `.p-4` | Tailwind Built-in | 42 | - | [Preview](ui_reference_preview.html#cls-p-4) |
-| `.transition-colors` | Tailwind Built-in | 42 | - | [Preview](ui_reference_preview.html#cls-transition-colors) |
-| `.rounded-lg` | Tailwind Built-in | 41 | - | [Preview](ui_reference_preview.html#cls-rounded-lg) |
-| `.bg-slate-950` | Tailwind Built-in | 39 | - | [Preview](ui_reference_preview.html#cls-bg-slate-950) |
-| `.font-mono` | Tailwind Built-in | 39 | - | [Preview](ui_reference_preview.html#cls-font-mono) |
-| `.border-slate-800` | Tailwind Built-in | 37 | - | [Preview](ui_reference_preview.html#cls-border-slate-800) |
-| `.px-3` | Tailwind Built-in | 36 | - | [Preview](ui_reference_preview.html#cls-px-3) |
-| `.text-[10px]` | Tailwind Built-in | 36 | - | [Preview](ui_reference_preview.html#cls-text-10px) |
-| `.flex-col` | Tailwind Built-in | 32 | - | [Preview](ui_reference_preview.html#cls-flex-col) |
-| `.text-sm` | Tailwind Built-in | 30 | - | [Preview](ui_reference_preview.html#cls-text-sm) |
-| `.text-slate-600` | Tailwind Built-in | 29 | - | [Preview](ui_reference_preview.html#cls-text-slate-600) |
+| `.p-4` | Tailwind Built-in | 43 | - | [Preview](ui_reference_preview.html#cls-p-4) |
+| `.rounded-lg` | Tailwind Built-in | 43 | - | [Preview](ui_reference_preview.html#cls-rounded-lg) |
+| `.border-slate-800` | Tailwind Built-in | 42 | - | [Preview](ui_reference_preview.html#cls-border-slate-800) |
+| `.font-mono` | Tailwind Built-in | 42 | - | [Preview](ui_reference_preview.html#cls-font-mono) |
+| `.text-[10px]` | Tailwind Built-in | 42 | - | [Preview](ui_reference_preview.html#cls-text-10px) |
+| `.bg-slate-950` | Tailwind Built-in | 40 | - | [Preview](ui_reference_preview.html#cls-bg-slate-950) |
+| `.px-3` | Tailwind Built-in | 37 | - | [Preview](ui_reference_preview.html#cls-px-3) |
+| `.flex-col` | Tailwind Built-in | 35 | - | [Preview](ui_reference_preview.html#cls-flex-col) |
+| `.justify-between` | Tailwind Built-in | 33 | - | [Preview](ui_reference_preview.html#cls-justify-between) |
+| `.text-sm` | Tailwind Built-in | 31 | - | [Preview](ui_reference_preview.html#cls-text-sm) |
+| `.text-slate-600` | Tailwind Built-in | 30 | - | [Preview](ui_reference_preview.html#cls-text-slate-600) |
+| `.text-slate-300` | Tailwind Built-in | 29 | - | [Preview](ui_reference_preview.html#cls-text-slate-300) |
 | `.transition-all` | Tailwind Built-in | 29 | - | [Preview](ui_reference_preview.html#cls-transition-all) |
-| `.justify-between` | Tailwind Built-in | 28 | - | [Preview](ui_reference_preview.html#cls-justify-between) |
-| `.block` | Tailwind Built-in | 26 | - | [Preview](ui_reference_preview.html#cls-block) |
+| `.bg-slate-800` | Tailwind Built-in | 28 | - | [Preview](ui_reference_preview.html#cls-bg-slate-800) |
+| `.block` | Tailwind Built-in | 28 | - | [Preview](ui_reference_preview.html#cls-block) |
+| `.flex-1` | Tailwind Built-in | 28 | - | [Preview](ui_reference_preview.html#cls-flex-1) |
+| `.text-slate-200` | Tailwind Built-in | 28 | - | [Preview](ui_reference_preview.html#cls-text-slate-200) |
+| `.p-2` | Tailwind Built-in | 27 | - | [Preview](ui_reference_preview.html#cls-p-2) |
+| `.py-1.5` | Tailwind Built-in | 27 | - | [Preview](ui_reference_preview.html#cls-py-1-5) |
 | `.p-1.5` | Tailwind Built-in | 26 | - | [Preview](ui_reference_preview.html#cls-p-1-5) |
-| `.text-slate-200` | Tailwind Built-in | 26 | - | [Preview](ui_reference_preview.html#cls-text-slate-200) |
-| `.bg-slate-800` | Tailwind Built-in | 25 | - | [Preview](ui_reference_preview.html#cls-bg-slate-800) |
-| `.py-1.5` | Tailwind Built-in | 25 | - | [Preview](ui_reference_preview.html#cls-py-1-5) |
-| `.p-2` | Tailwind Built-in | 24 | - | [Preview](ui_reference_preview.html#cls-p-2) |
 | `.p-3` | Tailwind Built-in | 24 | - | [Preview](ui_reference_preview.html#cls-p-3) |
-| `.text-slate-300` | Tailwind Built-in | 24 | - | [Preview](ui_reference_preview.html#cls-text-slate-300) |
-| `.flex-1` | Tailwind Built-in | 23 | - | [Preview](ui_reference_preview.html#cls-flex-1) |
+| `.shrink-0` | Tailwind Built-in | 24 | - | [Preview](ui_reference_preview.html#cls-shrink-0) |
 | `.justify-center` | Tailwind Built-in | 23 | - | [Preview](ui_reference_preview.html#cls-justify-center) |
 | `.mb-3` | Tailwind Built-in | 23 | - | [Preview](ui_reference_preview.html#cls-mb-3) |
+| `.p-1` | Tailwind Built-in | 23 | - | [Preview](ui_reference_preview.html#cls-p-1) |
 | `.absolute` | Tailwind Built-in | 21 | - | [Preview](ui_reference_preview.html#cls-absolute) |
 | `.border-2` | Tailwind Built-in | 21 | - | [Preview](ui_reference_preview.html#cls-border-2) |
-| `.relative` | Tailwind Built-in | 19 | - | [Preview](ui_reference_preview.html#cls-relative) |
-| `.border-b` | Tailwind Built-in | 18 | - | [Preview](ui_reference_preview.html#cls-border-b) |
+| `.border-b` | Tailwind Built-in | 21 | - | [Preview](ui_reference_preview.html#cls-border-b) |
+| `.truncate` | Tailwind Built-in | 21 | - | [Preview](ui_reference_preview.html#cls-truncate) |
+| `.relative` | Tailwind Built-in | 20 | - | [Preview](ui_reference_preview.html#cls-relative) |
+| `.custom-scrollbar` | Tailwind Built-in | 19 | - | [Preview](ui_reference_preview.html#cls-custom-scrollbar) |
+| `.font-semibold` | Tailwind Built-in | 19 | - | [Preview](ui_reference_preview.html#cls-font-semibold) |
+| `.gap-1` | Tailwind Built-in | 19 | - | [Preview](ui_reference_preview.html#cls-gap-1) |
+| `.mt-1` | Tailwind Built-in | 19 | - | [Preview](ui_reference_preview.html#cls-mt-1) |
+| `.px-2` | Tailwind Built-in | 19 | - | [Preview](ui_reference_preview.html#cls-px-2) |
 | `.focus:border-blue-500` | Tailwind Built-in | 18 | - | [Preview](ui_reference_preview.html#cls-focus-border-blue-500) |
 | `.mb-4` | Tailwind Built-in | 18 | - | [Preview](ui_reference_preview.html#cls-mb-4) |
-| `.mt-1` | Tailwind Built-in | 18 | - | [Preview](ui_reference_preview.html#cls-mt-1) |
+| `.overflow-y-auto` | Tailwind Built-in | 18 | - | [Preview](ui_reference_preview.html#cls-overflow-y-auto) |
 | `.text-center` | Tailwind Built-in | 18 | - | [Preview](ui_reference_preview.html#cls-text-center) |
 | `.text-gray-500` | Tailwind Built-in | 18 | - | [Preview](ui_reference_preview.html#cls-text-gray-500) |
-| `.custom-scrollbar` | Tailwind Built-in | 17 | - | [Preview](ui_reference_preview.html#cls-custom-scrollbar) |
-| `.font-semibold` | Tailwind Built-in | 17 | - | [Preview](ui_reference_preview.html#cls-font-semibold) |
 | `.outline-none` | Tailwind Built-in | 17 | - | [Preview](ui_reference_preview.html#cls-outline-none) |
-| `.p-1` | Tailwind Built-in | 17 | - | [Preview](ui_reference_preview.html#cls-p-1) |
-| `.gap-1` | Tailwind Built-in | 16 | - | [Preview](ui_reference_preview.html#cls-gap-1) |
-| `.overflow-hidden` | Tailwind Built-in | 16 | - | [Preview](ui_reference_preview.html#cls-overflow-hidden) |
-| `.overflow-y-auto` | Tailwind Built-in | 16 | - | [Preview](ui_reference_preview.html#cls-overflow-y-auto) |
-| `.text-white` | Tailwind Built-in | 16 | - | [Preview](ui_reference_preview.html#cls-text-white) |
+| `.text-white` | Tailwind Built-in | 17 | - | [Preview](ui_reference_preview.html#cls-text-white) |
 | `.tracking-widest` | Tailwind Built-in | 16 | - | [Preview](ui_reference_preview.html#cls-tracking-widest) |
 | `.hover:bg-slate-800` | Tailwind Built-in | 15 | - | [Preview](ui_reference_preview.html#cls-hover-bg-slate-800) |
-| `.shrink-0` | Tailwind Built-in | 15 | - | [Preview](ui_reference_preview.html#cls-shrink-0) |
+| `.mb-1` | Tailwind Built-in | 15 | - | [Preview](ui_reference_preview.html#cls-mb-1) |
+| `.overflow-hidden` | Tailwind Built-in | 15 | - | [Preview](ui_reference_preview.html#cls-overflow-hidden) |
 | `.transition-transform` | Tailwind Built-in | 15 | - | [Preview](ui_reference_preview.html#cls-transition-transform) |
-| `.truncate` | Tailwind Built-in | 15 | - | [Preview](ui_reference_preview.html#cls-truncate) |
-| `.mb-1` | Tailwind Built-in | 14 | - | [Preview](ui_reference_preview.html#cls-mb-1) |
-| `.px-2` | Tailwind Built-in | 14 | - | [Preview](ui_reference_preview.html#cls-px-2) |
-| `.cursor-pointer` | Tailwind Built-in | 13 | - | [Preview](ui_reference_preview.html#cls-cursor-pointer) |
-| `.px-4` | Tailwind Built-in | 13 | - | [Preview](ui_reference_preview.html#cls-px-4) |
-| `.py-2` | Tailwind Built-in | 13 | - | [Preview](ui_reference_preview.html#cls-py-2) |
-| `.hover:text-red-400` | Tailwind Built-in | 12 | - | [Preview](ui_reference_preview.html#cls-hover-text-red-400) |
+| `.hover:text-red-400` | Tailwind Built-in | 14 | - | [Preview](ui_reference_preview.html#cls-hover-text-red-400) |
+| `.py-2` | Tailwind Built-in | 14 | - | [Preview](ui_reference_preview.html#cls-py-2) |
+| `.h-2` | Tailwind Built-in | 13 | - | [Preview](ui_reference_preview.html#cls-h-2) |
+| `.py-1` | Tailwind Built-in | 13 | - | [Preview](ui_reference_preview.html#cls-py-1) |
+| `.cursor-pointer` | Tailwind Built-in | 12 | - | [Preview](ui_reference_preview.html#cls-cursor-pointer) |
+| `.font-medium` | Tailwind Built-in | 12 | - | [Preview](ui_reference_preview.html#cls-font-medium) |
+| `.px-4` | Tailwind Built-in | 12 | - | [Preview](ui_reference_preview.html#cls-px-4) |
+| `.py-0.5` | Tailwind Built-in | 12 | - | [Preview](ui_reference_preview.html#cls-py-0-5) |
 | `.text-[11px]` | Tailwind Built-in | 12 | - | [Preview](ui_reference_preview.html#cls-text-11px) |
+| `.text-[9px]` | Tailwind Built-in | 12 | - | [Preview](ui_reference_preview.html#cls-text-9px) |
+| `.flex-wrap` | Tailwind Built-in | 11 | - | [Preview](ui_reference_preview.html#cls-flex-wrap) |
 | `.grid` | Tailwind Built-in | 11 | - | [Preview](ui_reference_preview.html#cls-grid) |
-| `.h-2` | Tailwind Built-in | 11 | - | [Preview](ui_reference_preview.html#cls-h-2) |
 | `.h-5` | Tailwind Built-in | 11 | - | [Preview](ui_reference_preview.html#cls-h-5) |
+| `.italic` | Tailwind Built-in | 11 | - | [Preview](ui_reference_preview.html#cls-italic) |
+| `.min-w-0` | Tailwind Built-in | 11 | - | [Preview](ui_reference_preview.html#cls-min-w-0) |
+| `.px-1.5` | Tailwind Built-in | 11 | - | [Preview](ui_reference_preview.html#cls-px-1-5) |
+| `.tracking-wider` | Tailwind Built-in | 11 | - | [Preview](ui_reference_preview.html#cls-tracking-wider) |
 | `.bg-slate-700` | Tailwind Built-in | 10 | - | [Preview](ui_reference_preview.html#cls-bg-slate-700) |
+| `.gap-1.5` | Tailwind Built-in | 10 | - | [Preview](ui_reference_preview.html#cls-gap-1-5) |
 | `.hover:text-white` | Tailwind Built-in | 10 | - | [Preview](ui_reference_preview.html#cls-hover-text-white) |
-| `.italic` | Tailwind Built-in | 10 | - | [Preview](ui_reference_preview.html#cls-italic) |
 | `.mx-auto` | Tailwind Built-in | 10 | - | [Preview](ui_reference_preview.html#cls-mx-auto) |
 | `.opacity-0` | Tailwind Built-in | 10 | - | [Preview](ui_reference_preview.html#cls-opacity-0) |
-| `.py-1` | Tailwind Built-in | 10 | - | [Preview](ui_reference_preview.html#cls-py-1) |
 | `.disabled:opacity-50` | Tailwind Built-in | 9 | - | [Preview](ui_reference_preview.html#cls-disabled-opacity-50) |
-| `.flex-wrap` | Tailwind Built-in | 9 | - | [Preview](ui_reference_preview.html#cls-flex-wrap) |
-| `.font-medium` | Tailwind Built-in | 9 | - | [Preview](ui_reference_preview.html#cls-font-medium) |
-| `.gap-4` | Tailwind Built-in | 9 | - | [Preview](ui_reference_preview.html#cls-gap-4) |
 | `.group-hover:opacity-100` | Tailwind Built-in | 9 | - | [Preview](ui_reference_preview.html#cls-group-hover-opacity-100) |
+| `.hover:bg-slate-700` | Tailwind Built-in | 9 | - | [Preview](ui_reference_preview.html#cls-hover-bg-slate-700) |
 | `.mt-3` | Tailwind Built-in | 9 | - | [Preview](ui_reference_preview.html#cls-mt-3) |
-| `.px-1.5` | Tailwind Built-in | 9 | - | [Preview](ui_reference_preview.html#cls-px-1-5) |
-| `.py-0.5` | Tailwind Built-in | 9 | - | [Preview](ui_reference_preview.html#cls-py-0-5) |
+| `.space-y-3` | Tailwind Built-in | 9 | - | [Preview](ui_reference_preview.html#cls-space-y-3) |
 | `.text-gray-400` | Tailwind Built-in | 9 | - | [Preview](ui_reference_preview.html#cls-text-gray-400) |
 | `.text-right` | Tailwind Built-in | 9 | - | [Preview](ui_reference_preview.html#cls-text-right) |
 | `.border-slate-600` | Tailwind Built-in | 8 | - | [Preview](ui_reference_preview.html#cls-border-slate-600) |
 | `.dark:text-gray-300` | Tailwind Built-in | 8 | - | [Preview](ui_reference_preview.html#cls-dark-text-gray-300) |
 | `.dark:text-gray-400` | Tailwind Built-in | 8 | - | [Preview](ui_reference_preview.html#cls-dark-text-gray-400) |
+| `.gap-4` | Tailwind Built-in | 8 | - | [Preview](ui_reference_preview.html#cls-gap-4) |
 | `.h-4` | Tailwind Built-in | 8 | - | [Preview](ui_reference_preview.html#cls-h-4) |
-| `.hover:bg-slate-700` | Tailwind Built-in | 8 | - | [Preview](ui_reference_preview.html#cls-hover-bg-slate-700) |
 | `.hover:scale-110` | Tailwind Built-in | 8 | - | [Preview](ui_reference_preview.html#cls-hover-scale-110) |
-| `.min-w-0` | Tailwind Built-in | 8 | - | [Preview](ui_reference_preview.html#cls-min-w-0) |
-| `.space-y-3` | Tailwind Built-in | 8 | - | [Preview](ui_reference_preview.html#cls-space-y-3) |
+| `.rounded-md` | Tailwind Built-in | 8 | - | [Preview](ui_reference_preview.html#cls-rounded-md) |
 | `.text-2xl` | Tailwind Built-in | 8 | - | [Preview](ui_reference_preview.html#cls-text-2xl) |
-| `.text-[9px]` | Tailwind Built-in | 8 | - | [Preview](ui_reference_preview.html#cls-text-9px) |
 | `.text-gray-300` | Tailwind Built-in | 8 | - | [Preview](ui_reference_preview.html#cls-text-gray-300) |
 | `.text-gray-700` | Tailwind Built-in | 8 | - | [Preview](ui_reference_preview.html#cls-text-gray-700) |
+| `.w-2` | Tailwind Built-in | 8 | - | [Preview](ui_reference_preview.html#cls-w-2) |
 | `.w-4` | Tailwind Built-in | 8 | - | [Preview](ui_reference_preview.html#cls-w-4) |
 | `.bg-slate-900/50` | Tailwind Built-in | 7 | - | [Preview](ui_reference_preview.html#cls-bg-slate-900-50) |
 | `.dark:text-gray-200` | Tailwind Built-in | 7 | - | [Preview](ui_reference_preview.html#cls-dark-text-gray-200) |
-| `.gap-1.5` | Tailwind Built-in | 7 | - | [Preview](ui_reference_preview.html#cls-gap-1-5) |
 | `.inset-0` | Tailwind Built-in | 7 | - | [Preview](ui_reference_preview.html#cls-inset-0) |
 | `.mb-6` | Tailwind Built-in | 7 | - | [Preview](ui_reference_preview.html#cls-mb-6) |
 | `.mt-2` | Tailwind Built-in | 7 | - | [Preview](ui_reference_preview.html#cls-mt-2) |
 | `.opacity-50` | Tailwind Built-in | 7 | - | [Preview](ui_reference_preview.html#cls-opacity-50) |
-| `.rounded-md` | Tailwind Built-in | 7 | - | [Preview](ui_reference_preview.html#cls-rounded-md) |
+| `.pointer-events-none` | Tailwind Built-in | 7 | - | [Preview](ui_reference_preview.html#cls-pointer-events-none) |
+| `.space-y-1` | Tailwind Built-in | 7 | - | [Preview](ui_reference_preview.html#cls-space-y-1) |
 | `.text-gray-600` | Tailwind Built-in | 7 | - | [Preview](ui_reference_preview.html#cls-text-gray-600) |
-| `.tracking-wider` | Tailwind Built-in | 7 | - | [Preview](ui_reference_preview.html#cls-tracking-wider) |
-| `.w-2` | Tailwind Built-in | 7 | - | [Preview](ui_reference_preview.html#cls-w-2) |
 | `.bg-slate-950/30` | Tailwind Built-in | 6 | - | [Preview](ui_reference_preview.html#cls-bg-slate-950-30) |
 | `.border-dashed` | Tailwind Built-in | 6 | - | [Preview](ui_reference_preview.html#cls-border-dashed) |
 | `.disabled:cursor-not-allowed` | Tailwind Built-in | 6 | - | [Preview](ui_reference_preview.html#cls-disabled-cursor-not-allowed) |
 | `.gap-3` | Tailwind Built-in | 6 | - | [Preview](ui_reference_preview.html#cls-gap-3) |
-| `.pointer-events-none` | Tailwind Built-in | 6 | - | [Preview](ui_reference_preview.html#cls-pointer-events-none) |
+| `.hidden` | Tailwind Built-in | 6 | - | [Preview](ui_reference_preview.html#cls-hidden) |
+| `.mt-4` | Tailwind Built-in | 6 | - | [Preview](ui_reference_preview.html#cls-mt-4) |
 | `.shadow-2xl` | Tailwind Built-in | 6 | - | [Preview](ui_reference_preview.html#cls-shadow-2xl) |
-| `.space-y-1` | Tailwind Built-in | 6 | - | [Preview](ui_reference_preview.html#cls-space-y-1) |
 | `.text-[8px]` | Tailwind Built-in | 6 | - | [Preview](ui_reference_preview.html#cls-text-8px) |
 | `.text-cyan-300` | Tailwind Built-in | 6 | - | [Preview](ui_reference_preview.html#cls-text-cyan-300) |
 | `.text-lg` | Tailwind Built-in | 6 | - | [Preview](ui_reference_preview.html#cls-text-lg) |
 | `.text-red-500` | Tailwind Built-in | 6 | - | [Preview](ui_reference_preview.html#cls-text-red-500) |
+| `.tracking-wide` | Tailwind Built-in | 6 | - | [Preview](ui_reference_preview.html#cls-tracking-wide) |
 | `.w-5` | Tailwind Built-in | 6 | - | [Preview](ui_reference_preview.html#cls-w-5) |
 | `.border-gray-200` | Tailwind Built-in | 5 | - | [Preview](ui_reference_preview.html#cls-border-gray-200) |
 | `.grid-cols-2` | Tailwind Built-in | 5 | - | [Preview](ui_reference_preview.html#cls-grid-cols-2) |
 | `.group` | Tailwind Built-in | 5 | - | [Preview](ui_reference_preview.html#cls-group) |
 | `.h-3` | Tailwind Built-in | 5 | - | [Preview](ui_reference_preview.html#cls-h-3) |
 | `.h-8` | Tailwind Built-in | 5 | - | [Preview](ui_reference_preview.html#cls-h-8) |
-| `.hidden` | Tailwind Built-in | 5 | - | [Preview](ui_reference_preview.html#cls-hidden) |
+| `.hover:text-slate-200` | Tailwind Built-in | 5 | - | [Preview](ui_reference_preview.html#cls-hover-text-slate-200) |
 | `.inline-block` | Tailwind Built-in | 5 | - | [Preview](ui_reference_preview.html#cls-inline-block) |
-| `.mt-4` | Tailwind Built-in | 5 | - | [Preview](ui_reference_preview.html#cls-mt-4) |
+| `.min-h-0` | Tailwind Built-in | 5 | - | [Preview](ui_reference_preview.html#cls-min-h-0) |
+| `.ml-1` | Tailwind Built-in | 5 | - | [Preview](ui_reference_preview.html#cls-ml-1) |
 | `.overflow-auto` | Tailwind Built-in | 5 | - | [Preview](ui_reference_preview.html#cls-overflow-auto) |
 | `.right-2` | Tailwind Built-in | 5 | - | [Preview](ui_reference_preview.html#cls-right-2) |
+| `.space-y-4` | Tailwind Built-in | 5 | - | [Preview](ui_reference_preview.html#cls-space-y-4) |
 | `.top-2` | Tailwind Built-in | 5 | - | [Preview](ui_reference_preview.html#cls-top-2) |
-| `.tracking-wide` | Tailwind Built-in | 5 | - | [Preview](ui_reference_preview.html#cls-tracking-wide) |
 | `.w-3` | Tailwind Built-in | 5 | - | [Preview](ui_reference_preview.html#cls-w-3) |
 | `.accent-cyan-500` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-accent-cyan-500) |
+| `.appearance-none` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-appearance-none) |
 | `.backdrop-blur` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-backdrop-blur) |
+| `.bg-slate-950/50` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-bg-slate-950-50) |
 | `.drop-shadow-lg` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-drop-shadow-lg) |
 | `.focus:outline-none` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-focus-outline-none) |
+| `.gap-0.5` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-gap-0-5) |
 | `.h-2.5` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-h-2-5) |
 | `.hover:bg-red-900/20` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-hover-bg-red-900-20) |
 | `.hover:bg-red-900/30` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-hover-bg-red-900-30) |
-| `.hover:text-slate-200` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-hover-text-slate-200) |
 | `.hover:text-slate-300` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-hover-text-slate-300) |
-| `.ml-1` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-ml-1) |
 | `.mr-1` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-mr-1) |
+| `.p-0.5` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-p-0-5) |
+| `.p-6` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-p-6) |
 | `.pb-4` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-pb-4) |
 | `.peer` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-peer) |
 | `.py-3` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-py-3) |
-| `.space-y-4` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-space-y-4) |
+| `.shadow-lg` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-shadow-lg) |
+| `.text-cyan-400` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-text-cyan-400) |
 | `.text-left` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-text-left) |
 | `.text-red-400` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-text-red-400) |
+| `.text-slate-100` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-text-slate-100) |
 | `.transition-opacity` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-transition-opacity) |
 | `.w-2.5` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-w-2-5) |
 | `.w-9` | Tailwind Built-in | 4 | - | [Preview](ui_reference_preview.html#cls-w-9) |
 | `.active:cursor-grabbing` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-active-cursor-grabbing) |
-| `.appearance-none` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-appearance-none) |
 | `.backdrop-blur-sm` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-backdrop-blur-sm) |
 | `.bg-blue-600` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-bg-blue-600) |
 | `.bg-slate-900/80` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-bg-slate-900-80) |
-| `.bg-slate-950/50` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-bg-slate-950-50) |
 | `.bg-white` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-bg-white) |
+| `.border-t` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-border-t) |
 | `.border-transparent` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-border-transparent) |
 | `.cursor-grab` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-cursor-grab) |
 | `.form-checkbox` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-form-checkbox) |
-| `.gap-0.5` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-gap-0-5) |
 | `.h-1.5` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-h-1-5) |
 | `.h-12` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-h-12) |
+| `.hover:bg-red-900` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-hover-bg-red-900) |
 | `.hover:border-slate-600` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-hover-border-slate-600) |
 | `.ml-2` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-ml-2) |
 | `.mt-6` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-mt-6) |
-| `.p-0.5` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-p-0-5) |
-| `.p-6` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-p-6) |
 | `.pointer-events-auto` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-pointer-events-auto) |
 | `.ring-1` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-ring-1) |
 | `.rounded-xl` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-rounded-xl) |
-| `.shadow-lg` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-shadow-lg) |
 | `.space-y-6` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-space-y-6) |
 | `.text-5xl` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-text-5xl) |
+| `.text-amber-400` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-text-amber-400) |
 | `.text-blue-500` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-text-blue-500) |
 | `.text-green-400` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-text-green-400) |
-| `.text-slate-100` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-text-slate-100) |
 | `.w-2/3` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-w-2-3) |
 | `.z-10` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-z-10) |
 | `.z-50` | Tailwind Built-in | 3 | - | [Preview](ui_reference_preview.html#cls-z-50) |
+| `.accent-blue-500` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-accent-blue-500) |
 | `.after:absolute` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-after-absolute) |
 | `.after:bg-white` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-after-bg-white) |
 | `.after:border` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-after-border) |
@@ -251,49 +257,58 @@ export function MyCustomWidget() {
 | `.border-gray-100` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-border-gray-100) |
 | `.border-l` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-border-l) |
 | `.border-none` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-border-none) |
-| `.border-t` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-border-t) |
+| `.border-slate-800/50` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-border-slate-800-50) |
 | `.dark:text-gray-100` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-dark-text-gray-100) |
 | `.duration-300` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-duration-300) |
+| `.fixed` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-fixed) |
 | `.focus:border-cyan-500` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-focus-border-cyan-500) |
 | `.focus:ring-blue-500` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-focus-ring-blue-500) |
 | `.from-slate-900` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-from-slate-900) |
 | `.gap-x-4` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-gap-x-4) |
 | `.gap-y-0` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-gap-y-0) |
 | `.grid-cols-3` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-grid-cols-3) |
-| `.h-16` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-h-16) |
 | `.h-6` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-h-6) |
 | `.h-9` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-h-9) |
+| `.h-auto` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-h-auto) |
 | `.hover:bg-blue-500` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-hover-bg-blue-500) |
-| `.hover:bg-red-900` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-hover-bg-red-900) |
 | `.hover:bg-slate-600` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-hover-bg-slate-600) |
 | `.hover:bg-slate-800/40` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-hover-bg-slate-800-40) |
 | `.hover:border-slate-700` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-hover-border-slate-700) |
 | `.hover:shadow-md` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-hover-shadow-md) |
 | `.inline` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-inline) |
 | `.inline-flex` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-inline-flex) |
+| `.invisible` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-invisible) |
+| `.items-start` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-items-start) |
+| `.leading-relaxed` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-leading-relaxed) |
+| `.leading-snug` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-leading-snug) |
 | `.left-0` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-left-0) |
 | `.left-2` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-left-2) |
 | `.max-h-[300px]` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-max-h-300px) |
 | `.max-w-3xl` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-max-w-3xl) |
+| `.md:h-full` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-md-h-full) |
 | `.md:p-6` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-md-p-6) |
 | `.md:p-8` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-md-p-8) |
+| `.min-h-full` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-min-h-full) |
 | `.ml-0.5` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-ml-0-5) |
 | `.ml-1.5` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-ml-1-5) |
 | `.ml-3` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-ml-3) |
+| `.ml-auto` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-ml-auto) |
 | `.mt-0.5` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-mt-0-5) |
 | `.mx-2` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-mx-2) |
+| `.overflow-x-auto` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-overflow-x-auto) |
 | `.p-0` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-p-0) |
 | `.pb-2` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-pb-2) |
 | `.peer-checked:after:border-white` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-peer-checked-after-border-white) |
 | `.peer-checked:after:translate-x-full` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-peer-checked-after-translate-x-full) |
 | `.peer-focus:outline-none` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-peer-focus-outline-none) |
 | `.pl-2` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-pl-2) |
+| `.pt-3` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-pt-3) |
 | `.ring-black/30` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-ring-black-30) |
 | `.select-none` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-select-none) |
 | `.sm:inline` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-sm-inline) |
+| `.space-y-2` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-space-y-2) |
 | `.sr-only` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-sr-only) |
-| `.text-amber-400` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-text-amber-400) |
-| `.text-cyan-400` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-text-cyan-400) |
+| `.text-blue-400` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-text-blue-400) |
 | `.text-gray-800` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-text-gray-800) |
 | `.text-green-500` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-text-green-500) |
 | `.text-md` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-text-md) |
@@ -302,22 +317,27 @@ export function MyCustomWidget() {
 | `.top-0.5` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-top-0-5) |
 | `.top-10` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-top-10) |
 | `.top-8` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-top-8) |
+| `.transition` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-transition) |
 | `.w-1.5` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-w-1-5) |
 | `.w-16` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-w-16) |
 | `.w-48` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-w-48) |
 | `.w-px` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-w-px) |
 | `.z-40` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-z-40) |
+| `.z-[60]` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-z-60) |
 | `.z-[80]` | Tailwind Built-in | 2 | - | [Preview](ui_reference_preview.html#cls-z-80) |
 | `.-translate-x-1/2` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-translate-x-1-2) |
 | `.-translate-y-1/2` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-translate-y-1-2) |
 | `.Set` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-set) |
-| `.accent-blue-500` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-accent-blue-500) |
+| `.active:bg-slate-800/80` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-active-bg-slate-800-80) |
 | `.animate-spin` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-animate-spin) |
 | `.backdrop-blur-[2px]` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-backdrop-blur-2px) |
 | `.bg-amber-500/10` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-bg-amber-500-10) |
+| `.bg-amber-900/60` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-bg-amber-900-60) |
+| `.bg-amber-950/30` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-bg-amber-950-30) |
 | `.bg-amber-950/60` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-bg-amber-950-60) |
 | `.bg-black/50` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-bg-black-50) |
 | `.bg-blue-100` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-bg-blue-100) |
+| `.bg-emerald-700` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-bg-emerald-700) |
 | `.bg-emerald-950/60` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-bg-emerald-950-60) |
 | `.bg-gradient-to-br` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-bg-gradient-to-br) |
 | `.bg-gradient-to-r` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-bg-gradient-to-r) |
@@ -327,18 +347,20 @@ export function MyCustomWidget() {
 | `.bg-red-500/10` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-bg-red-500-10) |
 | `.bg-red-600/20` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-bg-red-600-20) |
 | `.bg-sky-950/60` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-bg-sky-950-60) |
+| `.bg-slate-850` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-bg-slate-850) |
+| `.bg-slate-900/40` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-bg-slate-900-40) |
+| `.bg-slate-900/60` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-bg-slate-900-60) |
 | `.bg-slate-950/80` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-bg-slate-950-80) |
 | `.bg-yellow-950/60` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-bg-yellow-950-60) |
 | `.border-4` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-border-4) |
 | `.border-amber-500/30` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-border-amber-500-30) |
 | `.border-amber-600` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-border-amber-600) |
+| `.border-amber-700/60` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-border-amber-700-60) |
 | `.border-cyan-500/30` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-border-cyan-500-30) |
 | `.border-emerald-600` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-border-emerald-600) |
 | `.border-l-4` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-border-l-4) |
-| `.border-r` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-border-r) |
 | `.border-red-500/20` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-border-red-500-20) |
 | `.border-sky-600` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-border-sky-600) |
-| `.border-slate-800/50` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-border-slate-800-50) |
 | `.border-yellow-600` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-border-yellow-600) |
 | `.color` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-color) |
 | `.cursor-move` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-cursor-move) |
@@ -353,32 +375,36 @@ export function MyCustomWidget() {
 | `.fft-log-frequency` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-fft-log-frequency) |
 | `.fft-peak-tracker` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-fft-peak-tracker) |
 | `.fft-waterfall` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-fft-waterfall) |
-| `.fixed` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-fixed) |
+| `.flex-grow` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-flex-grow) |
 | `.focus:border-cyan-600` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-focus-border-cyan-600) |
 | `.focus:ring-green-500` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-focus-ring-green-500) |
+| `.font-black` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-font-black) |
 | `.font-sans` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-font-sans) |
 | `.frequency-integration` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-frequency-integration) |
 | `.from-cyan-500` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-from-cyan-500) |
 | `.grid-5x1-layout` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-grid-5x1-layout) |
 | `.grid-cols-6` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-grid-cols-6) |
 | `.group-hover:scale-125` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-group-hover-scale-125) |
+| `.h-16` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-h-16) |
 | `.h-20` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-h-20) |
-| `.h-screen` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-h-screen) |
+| `.h-dvh` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-h-dvh) |
 | `.hover:bg-blue-200` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-hover-bg-blue-200) |
+| `.hover:bg-emerald-600` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-hover-bg-emerald-600) |
 | `.hover:bg-gray-50` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-hover-bg-gray-50) |
 | `.hover:bg-green-500` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-hover-bg-green-500) |
 | `.hover:bg-red-600/40` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-hover-bg-red-600-40) |
 | `.hover:bg-red-900/50` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-hover-bg-red-900-50) |
+| `.hover:bg-rose-900/60` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-hover-bg-rose-900-60) |
 | `.hover:border-red-500/50` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-hover-border-red-500-50) |
 | `.hover:border-red-800` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-hover-border-red-800) |
 | `.hover:ring-white/50` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-hover-ring-white-50) |
 | `.hover:scale-125` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-hover-scale-125) |
+| `.hover:text-cyan-300` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-hover-text-cyan-300) |
 | `.hover:text-red-300` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-hover-text-red-300) |
+| `.hover:text-rose-200` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-hover-text-rose-200) |
 | `.hover:text-slate-400` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-hover-text-slate-400) |
 | `.hover:underline` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-hover-underline) |
-| `.invisible` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-invisible) |
 | `.items-baseline` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-items-baseline) |
-| `.items-start` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-items-start) |
 | `.justify-start` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-justify-start) |
 | `.last:border-0` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-last-border-0) |
 | `.last:mb-0` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-last-mb-0) |
@@ -386,47 +412,67 @@ export function MyCustomWidget() {
 | `.left-24` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-left-24) |
 | `.lowercase` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-lowercase) |
 | `.max-h-48` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-max-h-48) |
+| `.max-h-[42dvh]` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-max-h-42dvh) |
 | `.max-w-2xl` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-max-w-2xl) |
 | `.max-w-[300px]` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-max-w-300px) |
 | `.max-w-[90px]` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-max-w-90px) |
 | `.max-w-full` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-max-w-full) |
+| `.mb-1.5` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-mb-1-5) |
+| `.md:border-b-0` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-md-border-b-0) |
+| `.md:border-r` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-md-border-r) |
+| `.md:flex` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-md-flex) |
+| `.md:flex-row` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-md-flex-row) |
+| `.md:gap-4` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-md-gap-4) |
+| `.md:h-screen` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-md-h-screen) |
+| `.md:hidden` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-md-hidden) |
+| `.md:max-h-none` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-md-max-h-none) |
+| `.md:min-h-0` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-md-min-h-0) |
+| `.md:overflow-hidden` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-md-overflow-hidden) |
+| `.md:px-4` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-md-px-4) |
+| `.md:w-64` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-md-w-64) |
+| `.min-h-16` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-min-h-16) |
+| `.min-h-[18rem]` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-min-h-18rem) |
 | `.min-w-[120px]` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-min-w-120px) |
 | `.min-w-[140px]` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-min-w-140px) |
 | `.min-w-[180px]` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-min-w-180px) |
 | `.min-w-[220px]` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-min-w-220px) |
 | `.ml-6` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-ml-6) |
-| `.ml-auto` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-ml-auto) |
 | `.mr-2` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-mr-2) |
 | `.mt-1.5` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-mt-1-5) |
 | `.mx-1` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-mx-1) |
 | `.opacity-30` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-opacity-30) |
+| `.pb-3` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-pb-3) |
 | `.peer-checked:bg-blue-500` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-peer-checked-bg-blue-500) |
 | `.peer-checked:bg-cyan-500` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-peer-checked-bg-cyan-500) |
+| `.pr-2` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-pr-2) |
 | `.pt-2` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-pt-2) |
-| `.pt-3` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-pt-3) |
 | `.pt-4` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-pt-4) |
 | `.pt-9` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-pt-9) |
+| `.px-2.5` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-px-2-5) |
 | `.py-2.5` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-py-2-5) |
 | `.py-4` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-py-4) |
 | `.py-6` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-py-6) |
 | `.ring-white/20` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-ring-white-20) |
 | `.shadow-sm` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-shadow-sm) |
-| `.space-y-2` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-space-y-2) |
 | `.space-y-8` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-space-y-8) |
 | `.spectrum-analyzer-plugin` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-spectrum-analyzer-plugin) |
 | `.tabular-nums` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-tabular-nums) |
 | `.text-4xl` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-text-4xl) |
 | `.text-6xl` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-text-6xl) |
 | `.text-[7px]` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-text-7px) |
+| `.text-amber-200` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-text-amber-200) |
+| `.text-amber-200/70` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-text-amber-200-70) |
+| `.text-amber-300` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-text-amber-300) |
 | `.text-amber-500` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-text-amber-500) |
 | `.text-amber-500/70` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-text-amber-500-70) |
-| `.text-blue-400` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-text-blue-400) |
 | `.text-blue-700` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-text-blue-700) |
+| `.text-cyan-500` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-text-cyan-500) |
 | `.text-emerald-400` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-text-emerald-400) |
 | `.text-green-700` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-text-green-700) |
 | `.text-red-500/70` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-text-red-500-70) |
 | `.text-sky-400` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-text-sky-400) |
 | `.text-violet-400` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-text-violet-400) |
+| `.text-xl` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-text-xl) |
 | `.text-yellow-400` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-text-yellow-400) |
 | `.to-black` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-to-black) |
 | `.to-green-500` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-to-green-500) |
@@ -438,7 +484,6 @@ export function MyCustomWidget() {
 | `.via-slate-950` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-via-slate-950) |
 | `.w-20` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-w-20) |
 | `.w-56` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-w-56) |
-| `.w-64` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-w-64) |
 | `.w-8` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-w-8) |
 | `.w-96` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-w-96) |
 | `.w-auto` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-w-auto) |
@@ -447,7 +492,7 @@ export function MyCustomWidget() {
 | `.workbench-grid` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-workbench-grid) |
 | `.z-20` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-z-20) |
 | `.z-[10000]` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-z-10000) |
-| `.z-[60]` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-z-60) |
+| `.z-[120]` | Tailwind Built-in | 1 | - | [Preview](ui_reference_preview.html#cls-z-120) |
 
 ## Custom Plugin Classes
 
@@ -535,6 +580,7 @@ Icons are extracted from `elab_workbench/src/utils/Shared.jsx` (`Icons` export).
 | `Info` | <img src="https://unpkg.com/lucide-static@1.16.0/icons/info.svg" alt="Info" width="22" height="22" style="background:#ffffff;border:1px solid #cbd5e1;border-radius:4px;padding:2px;" /> | lucide-react |
 | `Layers` | <img src="https://unpkg.com/lucide-static@1.16.0/icons/layers.svg" alt="Layers" width="22" height="22" style="background:#ffffff;border:1px solid #cbd5e1;border-radius:4px;padding:2px;" /> | lucide-react |
 | `Layout` | <img src="https://unpkg.com/lucide-static@1.16.0/icons/layout.svg" alt="Layout" width="22" height="22" style="background:#ffffff;border:1px solid #cbd5e1;border-radius:4px;padding:2px;" /> | lucide-react |
+| `Link` | <img src="https://unpkg.com/lucide-static@1.16.0/icons/link.svg" alt="Link" width="22" height="22" style="background:#ffffff;border:1px solid #cbd5e1;border-radius:4px;padding:2px;" /> | lucide-react |
 | `ListChevronsUpDown` | <img src="https://unpkg.com/lucide-static@1.16.0/icons/list-chevrons-up-down.svg" alt="ListChevronsUpDown" width="22" height="22" style="background:#ffffff;border:1px solid #cbd5e1;border-radius:4px;padding:2px;" /> | lucide-react |
 | `ListCollapse` | <img src="https://unpkg.com/lucide-static@1.16.0/icons/list-collapse.svg" alt="ListCollapse" width="22" height="22" style="background:#ffffff;border:1px solid #cbd5e1;border-radius:4px;padding:2px;" /> | lucide-react |
 | `Loader2` | <img src="https://unpkg.com/lucide-static@1.16.0/icons/loader-2.svg" alt="Loader2" width="22" height="22" style="background:#ffffff;border:1px solid #cbd5e1;border-radius:4px;padding:2px;" /> | lucide-react |
@@ -558,6 +604,7 @@ Icons are extracted from `elab_workbench/src/utils/Shared.jsx` (`Icons` export).
 | `Send` | <img src="https://unpkg.com/lucide-static@1.16.0/icons/send.svg" alt="Send" width="22" height="22" style="background:#ffffff;border:1px solid #cbd5e1;border-radius:4px;padding:2px;" /> | lucide-react |
 | `Server` | <img src="https://unpkg.com/lucide-static@1.16.0/icons/server.svg" alt="Server" width="22" height="22" style="background:#ffffff;border:1px solid #cbd5e1;border-radius:4px;padding:2px;" /> | lucide-react |
 | `Settings` | <img src="https://unpkg.com/lucide-static@1.16.0/icons/settings.svg" alt="Settings" width="22" height="22" style="background:#ffffff;border:1px solid #cbd5e1;border-radius:4px;padding:2px;" /> | lucide-react |
+| `ShieldAlert` | <img src="https://unpkg.com/lucide-static@1.16.0/icons/shield-alert.svg" alt="ShieldAlert" width="22" height="22" style="background:#ffffff;border:1px solid #cbd5e1;border-radius:4px;padding:2px;" /> | lucide-react |
 | `Sidebar` | <img src="https://unpkg.com/lucide-static@1.16.0/icons/sidebar.svg" alt="Sidebar" width="22" height="22" style="background:#ffffff;border:1px solid #cbd5e1;border-radius:4px;padding:2px;" /> | lucide-react |
 | `Sigma` | <img src="https://unpkg.com/lucide-static@1.16.0/icons/sigma.svg" alt="Sigma" width="22" height="22" style="background:#ffffff;border:1px solid #cbd5e1;border-radius:4px;padding:2px;" /> | lucide-react |
 | `Square` | <img src="https://unpkg.com/lucide-static@1.16.0/icons/square.svg" alt="Square" width="22" height="22" style="background:#ffffff;border:1px solid #cbd5e1;border-radius:4px;padding:2px;" /> | lucide-react |
@@ -625,10 +672,17 @@ Hex values found in scanned source files, excluding colors from `COLOR_PALETTE` 
 
 | Hex | Preview | Usage Count | In COLOR_PALETTE | In SYSTEM_COLORS | Example Files |
 |-----|---------|-------------|------------------|------------------|---------------|
+| `#020617` | <span style="display:inline-block;width:20px;height:12px;background:#020617;border:1px solid #999;"></span> | 4 | No | No | digital_phosphor_plugin.js, precision_audio_plugin.js |
 | `#0f0f1f` | <span style="display:inline-block;width:20px;height:12px;background:#0f0f1f;border:1px solid #999;"></span> | 3 | No | No | AdvancedFFTDisplays.jsx, FFTAnalyzer.jsx |
 | `#00ff88` | <span style="display:inline-block;width:20px;height:12px;background:#00ff88;border:1px solid #999;"></span> | 2 | No | No | AdvancedFFTDisplays.jsx, FFTAnalyzer.jsx |
+| `#050814` | <span style="display:inline-block;width:20px;height:12px;background:#050814;border:1px solid #999;"></span> | 2 | No | No | phase_space_plugin.js |
+| `#22d3ee` | <span style="display:inline-block;width:20px;height:12px;background:#22d3ee;border:1px solid #999;"></span> | 2 | No | No | precision_audio_plugin.js, signal_terrain_plugin.js |
 | `#333344` | <span style="display:inline-block;width:20px;height:12px;background:#333344;border:1px solid #999;"></span> | 2 | No | No | AdvancedFFTDisplays.jsx, FFTAnalyzer.jsx |
 | `#888899` | <span style="display:inline-block;width:20px;height:12px;background:#888899;border:1px solid #999;"></span> | 2 | No | No | AdvancedFFTDisplays.jsx, FFTAnalyzer.jsx |
+| `#0b1220` | <span style="display:inline-block;width:20px;height:12px;background:#0b1220;border:1px solid #999;"></span> | 1 | No | No | signal_terrain_plugin.js |
+| `#0ea5e9` | <span style="display:inline-block;width:20px;height:12px;background:#0ea5e9;border:1px solid #999;"></span> | 1 | No | No | precision_audio_plugin.js |
+| `#a855f7` | <span style="display:inline-block;width:20px;height:12px;background:#a855f7;border:1px solid #999;"></span> | 1 | No | No | precision_audio_plugin.js |
+| `#e2e8f0` | <span style="display:inline-block;width:20px;height:12px;background:#e2e8f0;border:1px solid #999;"></span> | 1 | No | No | precision_audio_plugin.js |
 
 ## Scanned Directories
 
@@ -636,4 +690,4 @@ The following directories were scanned for class usage:
 
 - `elab_workbench\src` [ok]
 - `elab_clients_core\python\assets` [ok]
-- `elab_clients_premium\python\assets` [missing]
+- `elab_clients_premium\python\assets` [ok]
