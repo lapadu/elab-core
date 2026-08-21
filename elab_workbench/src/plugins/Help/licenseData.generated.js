@@ -209,12 +209,6 @@ export const FRONTEND_DEPS = [
 
 export const BACKEND_DEPS = [
   {
-    "name": "altgraph",
-    "version": "0.17.5",
-    "license": "MIT",
-    "repo": "https://altgraph.readthedocs.io"
-  },
-  {
     "name": "attrs",
     "version": "26.1.0",
     "license": "MIT",
@@ -227,6 +221,12 @@ export const BACKEND_DEPS = [
     "repo": ""
   },
   {
+    "name": "bleak",
+    "version": "3.0.2",
+    "license": "MIT",
+    "repo": "https://github.com/hbldh/bleak?tab=MIT-1-ov-file"
+  },
+  {
     "name": "blinker",
     "version": "1.9.0",
     "license": "MIT",
@@ -234,25 +234,25 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "certifi",
-    "version": "2026.2.25",
+    "version": "2026.6.17",
     "license": "MPL-2.0",
     "repo": "https://github.com/certifi/python-certifi?tab=MPL-2.0-1-ov-file"
   },
   {
     "name": "cffi",
-    "version": "2.0.0",
-    "license": "MIT",
+    "version": "2.1.0",
+    "license": "MIT-0",
     "repo": ""
   },
   {
     "name": "charset-normalizer",
-    "version": "3.4.6",
+    "version": "3.4.9",
     "license": "MIT",
     "repo": ""
   },
   {
     "name": "click",
-    "version": "8.3.1",
+    "version": "8.4.2",
     "license": "BSD-3-Clause",
     "repo": ""
   },
@@ -270,7 +270,7 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "coverage",
-    "version": "7.14.0",
+    "version": "7.15.0",
     "license": "Apache-2.0",
     "repo": "https://github.com/coveragepy/coveragepy?tab=Apache-2.0-1-ov-file"
   },
@@ -281,18 +281,6 @@ export const BACKEND_DEPS = [
     "repo": "https://matplotlib.org/cycler"
   },
   {
-    "name": "elab-local-api",
-    "version": "0.1.0",
-    "license": "MIT",
-    "repo": ""
-  },
-  {
-    "name": "engineio-client",
-    "version": "0.2",
-    "license": "MIT",
-    "repo": "https://github.com/PeterWunderlich/python-engineio-client?tab=MIT-1-ov-file"
-  },
-  {
     "name": "Flask",
     "version": "3.1.3",
     "license": "BSD-3-Clause",
@@ -300,7 +288,7 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "flask-cors",
-    "version": "6.0.2",
+    "version": "6.0.5",
     "license": "MIT",
     "repo": "https://corydolphin.github.io/flask-cors"
   },
@@ -312,19 +300,25 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "fonttools",
-    "version": "4.62.1",
+    "version": "4.63.0",
     "license": "MIT",
     "repo": "https://github.com/fonttools/fonttools?tab=MIT-1-ov-file"
   },
   {
     "name": "gevent",
-    "version": "25.9.1",
+    "version": "26.5.0",
     "license": "MIT",
     "repo": "http://www.gevent.org"
   },
   {
+    "name": "gevent-websocket",
+    "version": "0.10.1",
+    "license": "Copyright 2011-2017 Jeffrey Gelens <jeffrey@noppo.pro>",
+    "repo": "https://www.gitlab.com/noppo/gevent-websocket"
+  },
+  {
     "name": "greenlet",
-    "version": "3.3.2",
+    "version": "3.5.3",
     "license": "MIT AND PSF-2.0",
     "repo": "https://greenlet.readthedocs.io"
   },
@@ -336,7 +330,7 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "idna",
-    "version": "3.11",
+    "version": "3.18",
     "license": "BSD-3-Clause",
     "repo": ""
   },
@@ -373,8 +367,8 @@ export const BACKEND_DEPS = [
   {
     "name": "kiwisolver",
     "version": "1.5.0",
-    "license": "BSD",
-    "repo": "https://github.com/nucleic/kiwi?tab=BSD-1-ov-file"
+    "license": "Id",
+    "repo": "https://github.com/nucleic/kiwi?tab=Id-1-ov-file"
   },
   {
     "name": "MarkupSafe",
@@ -384,13 +378,13 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "matplotlib",
-    "version": "3.10.9",
+    "version": "3.11.0",
     "license": "License agreement for matplotlib versions 1.3.0 and later",
     "repo": "https://matplotlib.org"
   },
   {
     "name": "numpy",
-    "version": "2.4.4",
+    "version": "2.5.1",
     "license": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0",
     "repo": "https://numpy.org"
   },
@@ -401,14 +395,8 @@ export const BACKEND_DEPS = [
     "repo": ""
   },
   {
-    "name": "pefile",
-    "version": "2024.8.26",
-    "license": "MIT",
-    "repo": "https://github.com/erocarrera/pefile?tab=MIT-1-ov-file"
-  },
-  {
     "name": "pillow",
-    "version": "12.2.0",
+    "version": "12.3.0",
     "license": "MIT-CMU",
     "repo": "https://python-pillow.github.io"
   },
@@ -417,12 +405,6 @@ export const BACKEND_DEPS = [
     "version": "1.6.0",
     "license": "MIT",
     "repo": ""
-  },
-  {
-    "name": "psutil",
-    "version": "7.2.2",
-    "license": "BSD-3-Clause",
-    "repo": "https://github.com/giampaolo/psutil?tab=BSD-3-Clause-1-ov-file"
   },
   {
     "name": "pycparser",
@@ -437,26 +419,20 @@ export const BACKEND_DEPS = [
     "repo": "https://pygments.org"
   },
   {
-    "name": "pyinstaller",
-    "version": "6.20.0",
-    "license": "GPLv2-or-later with a special exception which allows to use PyInstaller to build and distribute non-free programs (including commercial ones)",
-    "repo": "https://pyinstaller.org"
-  },
-  {
-    "name": "pyinstaller-hooks-contrib",
-    "version": "2026.4",
-    "license": "GPL-2.0-or-later",
-    "repo": "https://github.com/pyinstaller/pyinstaller-hooks-contrib?tab=GPL-2.0-or-later-1-ov-file"
-  },
-  {
     "name": "pyparsing",
     "version": "3.3.2",
     "license": "MIT",
     "repo": "https://github.com/pyparsing/pyparsing?tab=MIT-1-ov-file"
   },
   {
+    "name": "pyserial",
+    "version": "3.5",
+    "license": "License-Identifier",
+    "repo": "https://github.com/pyserial/pyserial?tab=License-Identifier-1-ov-file"
+  },
+  {
     "name": "pytest",
-    "version": "9.0.3",
+    "version": "9.1.1",
     "license": "MIT",
     "repo": "https://docs.pytest.org/en/latest"
   },
@@ -474,21 +450,15 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "python-engineio",
-    "version": "4.13.1",
+    "version": "4.13.3",
     "license": "MIT",
     "repo": "https://github.com/miguelgrinberg/python-engineio?tab=MIT-1-ov-file"
   },
   {
     "name": "python-socketio",
-    "version": "5.16.1",
+    "version": "5.16.3",
     "license": "MIT",
     "repo": "https://github.com/miguelgrinberg/python-socketio?tab=MIT-1-ov-file"
-  },
-  {
-    "name": "pywin32-ctypes",
-    "version": "0.2.3",
-    "license": "BSD-3-Clause",
-    "repo": "https://github.com/enthought/pywin32-ctypes?tab=BSD-3-Clause-1-ov-file"
   },
   {
     "name": "pyzmq",
@@ -504,21 +474,15 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "requests",
-    "version": "2.33.0",
+    "version": "2.34.2",
     "license": "Apache-2.0",
     "repo": ""
   },
   {
     "name": "rpds-py",
-    "version": "0.30.0",
+    "version": "2026.6.3",
     "license": "MIT",
     "repo": "https://github.com/crate-py/rpds?tab=MIT-1-ov-file"
-  },
-  {
-    "name": "scipy",
-    "version": "1.17.1",
-    "license": "Copyright (c) 2001-2002 Enthought, Inc. 2003, SciPy Developers.",
-    "repo": "https://scipy.org"
   },
   {
     "name": "simple-websocket",
@@ -533,21 +497,81 @@ export const BACKEND_DEPS = [
     "repo": "https://github.com/benjaminp/six?tab=MIT-1-ov-file"
   },
   {
+    "name": "typing_extensions",
+    "version": "4.16.0",
+    "license": "Unknown",
+    "repo": ""
+  },
+  {
     "name": "urllib3",
-    "version": "2.6.3",
+    "version": "2.7.0",
     "license": "MIT",
     "repo": ""
   },
   {
     "name": "websocket-client",
-    "version": "0.47.0",
+    "version": "1.9.0",
     "license": "Apache-2.0",
     "repo": "https://github.com/websocket-client/websocket-client?tab=Apache-2.0-1-ov-file"
   },
   {
     "name": "Werkzeug",
-    "version": "3.1.7",
+    "version": "3.1.8",
     "license": "BSD-3-Clause",
+    "repo": ""
+  },
+  {
+    "name": "winrt-runtime",
+    "version": "3.2.1",
+    "license": "MIT",
+    "repo": ""
+  },
+  {
+    "name": "winrt-Windows.Devices.Bluetooth",
+    "version": "3.2.1",
+    "license": "MIT",
+    "repo": ""
+  },
+  {
+    "name": "winrt-Windows.Devices.Bluetooth.Advertisement",
+    "version": "3.2.1",
+    "license": "MIT",
+    "repo": ""
+  },
+  {
+    "name": "winrt-Windows.Devices.Bluetooth.GenericAttributeProfile",
+    "version": "3.2.1",
+    "license": "MIT",
+    "repo": ""
+  },
+  {
+    "name": "winrt-Windows.Devices.Enumeration",
+    "version": "3.2.1",
+    "license": "MIT",
+    "repo": ""
+  },
+  {
+    "name": "winrt-Windows.Devices.Radios",
+    "version": "3.2.1",
+    "license": "MIT",
+    "repo": ""
+  },
+  {
+    "name": "winrt-Windows.Foundation",
+    "version": "3.2.1",
+    "license": "MIT",
+    "repo": ""
+  },
+  {
+    "name": "winrt-Windows.Foundation.Collections",
+    "version": "3.2.1",
+    "license": "MIT",
+    "repo": ""
+  },
+  {
+    "name": "winrt-Windows.Storage.Streams",
+    "version": "3.2.1",
+    "license": "MIT",
     "repo": ""
   },
   {
@@ -558,14 +582,20 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "zope.event",
-    "version": "6.1",
+    "version": "6.2",
     "license": "ZPL-2.1",
-    "repo": "https://github.com/zopefoundation/zope.event?tab=ZPL-2.1-1-ov-file"
+    "repo": ""
   },
   {
     "name": "zope.interface",
-    "version": "8.2",
+    "version": "8.5",
     "license": "ZPL-2.1",
     "repo": ""
+  },
+  {
+    "name": "Owon XDM1041 Driver",
+    "version": "embedded",
+    "license": "Unknown (Default Copyright)",
+    "repo": "https://github.com/ElDuderino/XDM1041Python"
   }
 ];

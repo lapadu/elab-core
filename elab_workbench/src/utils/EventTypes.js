@@ -18,11 +18,13 @@ export const SOCKET_EVENTS = {
   REPLAY_STATUS: 'replay_status',
   REPLAY_PROGRESS: 'replay_progress',
   REPLAY_LOADED: 'replay_loaded',
+  REPLAY_RESET: 'replay_reset',
   SESSION_LIST: 'session_list',
   RECORDED_PROVIDERS: 'recorded_providers',
   PROVIDER_META_CHANGED: 'provider_meta_changed',
   TASK_REJECTED: 'task_rejected',
   ACTIVE_TASKS_SNAPSHOT: 'active_tasks_snapshot',
+  TASK_CONFIG_CHANGED: 'task_config_changed',
 
   // Provider pairing (Trust-on-First-Use)
   PENDING_DEVICES: 'pending_devices',
@@ -62,7 +64,8 @@ export const SOCKET_EVENTS = {
   GET_PENDING_DEVICES: 'get_pending_devices',
   APPROVE_PENDING_DEVICE: 'approve_pending_device',
   REVOKE_DEVICE: 'revoke_device',
-  DELETE_DEVICE_CREDENTIAL: 'delete_device_credential'
+  DELETE_DEVICE_CREDENTIAL: 'delete_device_credential',
+  SET_TASK_DECIMALS: 'set_task_decimals'
 };
 
 // Internal app events forwarded by the dispatcher to React hooks.
@@ -88,11 +91,13 @@ export const APP_EVENTS = {
   ON_REPLAY_STATUS: 'onReplayStatus',
   ON_REPLAY_PROGRESS: 'onReplayProgress',
   ON_REPLAY_LOADED: 'onReplayLoaded',
+  ON_REPLAY_RESET: 'onReplayReset',
   ON_SESSION_LIST: 'onSessionList',
   ON_RECORDED_PROVIDERS: 'onRecordedProviders',
   ON_TASK_REJECTED: 'onTaskRejected',
   ON_ACTIVE_TASKS_SNAPSHOT: 'onActiveTasksSnapshot',
 
   // Pairing (Trust-on-First-Use)
-  ON_PENDING_DEVICES: 'onPendingDevices'
+  ON_PENDING_DEVICES: 'onPendingDevices',
+  ON_TASK_CONFIG_CHANGED: 'onTaskConfigChanged'
 };

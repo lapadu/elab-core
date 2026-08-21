@@ -107,3 +107,44 @@ def test_garbage_lin_table_disables_linearization():
     })
     out = dec.decode(_pack("<H", [42]))
     assert out == [42.0]
+
+
+def test_encode_empty_values_returns_empty_bytes():
+    """Encoding an empty list must return empty bytes without raising."""
+    dec = GBD({"dataType": "uint16"})
+    assert dec.encode([]) == b""
+
+
+def test_encode_round_trips_scaled_values():
+    """encode() must be the inverse of decode() for the plain scaling path."""
+    dec = GBD({
+        "dataType": "uint16",
+        "zeroValue": 100,
+        "valueRange": 10.0,
+        "measurementRange": 1.0,
+    })
+    values = [10.0, 20.0, 30.0]
+    encoded = dec.encode(values)
+    assert encoded == _pack("<H", [200, 300, 400])
+    assert dec.decode(encoded) == pytest.approx(values)
+
+
+def test_encode_clamps_to_type_range():
+    """Values outside the target integer range must be saturated, not overflow."""
+    dec = GBD({"dataType": "uint8", "valueRange": 1.0, "measurementRange": 1.0})
+    # zeroValue defaults to 0, scale = 1.0 -> raw == value, clamped to [0, 255].
+    assert dec.encode([-5.0, 300.0]) == _pack("<B", [0, 255])
+
+
+def test_encode_round_trips_through_lin_table():
+    """encode() must delinearize so decode(encode(x)) recovers x with a table."""
+    dec = GBD({
+        "dataType": "uint16",
+        "valueRange": 1.0,
+        "measurementRange": 1.0,
+        "linearizationTable": [[0, 0.0], [100, 10.0]],
+    })
+    values = [0.0, 5.0, 10.0]
+    decoded = dec.decode(dec.encode(values))
+    assert decoded == pytest.approx(values)
+

@@ -75,8 +75,8 @@ npm test -- --coverage
 ## Teststruktur
 
 ```
+conftest.py                        # Globale Fixtures (sys.path) – im Repo-Root
 tests/
-├── conftest.py                    # Globale Fixtures (sys.path)
 ├── test_decoders.py               # Decoder-Logik
 ├── test_decoders_extended.py      # Erweiterte Decoder-Tests
 ├── test_discovery.py              # UDP-Discovery

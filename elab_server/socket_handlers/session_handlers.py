@@ -23,6 +23,15 @@ from ..session_utils import list_recorded_sessions
 logger = logging.getLogger(__name__)
 
 
+def _read_time_sources(cursor) -> dict:
+    """Map source_id -> time_source; empty for pre-schema-1 recordings."""
+    try:
+        cursor.execute("SELECT source_id, time_source FROM session_sources")
+        return dict(cursor.fetchall())
+    except sqlite3.Error:
+        return {}
+
+
 # pylint: disable=too-many-locals, too-many-statements, unused-argument
 def register(socketio, state, recorder, replayer, client_manager):
     """Register session/replay Socket.IO event handlers."""
@@ -57,24 +66,8 @@ def register(socketio, state, recorder, replayer, client_manager):
             cmd_session_stop({})
             time.sleep(0.2)
         success, msg = replayer.load_session(session_id)
-        duration = 0
-
-        if success:
-            db_path = os.path.join(_config.SESSION_DIR, session_id, "session.sqlite")
-            try:
-                conn = sqlite3.connect(db_path)
-                conn.execute("PRAGMA journal_mode=WAL;")
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT MIN(event_time_ms), MAX(event_time_ms) FROM session_log WHERE type = 'DATA_STREAM'"
-                )
-                result = cursor.fetchone()
-                if result and result[0] is not None and result[1] is not None:
-                    duration = result[1] - result[0]
-                conn.close()
-            except sqlite3.Error as e:
-                logger.error(
-                    "Could not read session duration for %s: %s", session_id, e)
+        # The replayer already resolved the span from session_meta (or the log).
+        duration = replayer.session_duration_ms if success else 0
 
         emit('replay_loaded', {
             'success': success,
@@ -178,6 +171,10 @@ def register(socketio, state, recorder, replayer, client_manager):
                     session_id,
                 )
 
+            # How each track's timestamps were anchored; drives how precisely
+            # tracks from different sessions can be aligned.
+            time_sources = _read_time_sources(cursor)
+
             cursor.execute("SELECT manifest FROM manifests")
             rows = cursor.fetchall()
             for row in rows:
@@ -222,6 +219,8 @@ def register(socketio, state, recorder, replayer, client_manager):
                         rec_task['originalId'] = original_task_id
                         rec_task['name'] = f"[REC] {task.get('name', 'Unknown Task')}"
                         rec_task['is_recorded'] = True
+                        if original_task_id in time_sources:
+                            rec_task['timeSource'] = time_sources[original_task_id]
 
                         # Keep the original task UI (views / template) so the
                         # recorded widget looks like the live one. Remote

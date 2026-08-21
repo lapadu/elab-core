@@ -14,6 +14,7 @@ from flask_socketio import emit, join_room
 
 from .._version import __version__ as ELAB_VERSION
 from ..auth import compute_manifest_hash, generate_secret, is_auth_required
+from .provider_handlers import _drop_actuator_routes_for
 from ._helpers import (
     _PLUGIN_ORIGIN_ALLOWLIST,
     _drop_time_offsets_for,
@@ -56,8 +57,8 @@ def register(socketio, state, recorder, replayer, client_manager):
         from the clients list.
         """
         sid: str = request.sid  # type: ignore[attr-defined]
-        if sid in state.providers:
-            provider_list = state.providers.get(sid, [])
+        if state.has_provider_sid(sid):
+            provider_list = state.get_providers_for_sid(sid)
             # Collect every source id that belonged to this provider so we can
             # drop their cached time offsets and avoid an unbounded memory leak.
             stale_source_ids = []
@@ -73,6 +74,7 @@ def register(socketio, state, recorder, replayer, client_manager):
             state.remove_provider(sid)
             state.drop_session_auth(sid)
             _drop_time_offsets_for(stale_source_ids)
+            _drop_actuator_routes_for(stale_source_ids)
 
             for provider in provider_list:
                 socketio.emit('provider_offline', {
@@ -264,7 +266,7 @@ def register(socketio, state, recorder, replayer, client_manager):
         with state.atomic_update():
             existing_count = 0
             is_reregister = False
-            for sid, p_list in state.providers.items():
+            for sid, p_list in state.snapshot_provider_items():
                 for existing in p_list:
                     if existing.get('id') == manifest_id:
                         if sid == provider_id:
@@ -289,10 +291,7 @@ def register(socketio, state, recorder, replayer, client_manager):
                     manifest.get('name'), manifest.get('id'),
                 )
             elif is_reregister:
-                state.providers[provider_id] = [
-                    p for p in state.providers.get(provider_id, [])
-                    if p['id'] != manifest_id
-                ]
+                state.drop_manifest_from_sid(provider_id, manifest_id)
                 logger.info(
                     "🔄 Manifest refreshed via re-registration: %s [%s] from SID %s",
                     manifest.get('name'),
@@ -325,11 +324,11 @@ def register(socketio, state, recorder, replayer, client_manager):
             with state.atomic_update():
                 pid = manifest.get('id')
                 if pid:
-                    state.ui_internal_sources.add(pid)
+                    state.mark_ui_internal_source(pid)
                 for task in manifest.get('tasks', []) or []:
                     tid = task.get('id')
                     if tid:
-                        state.ui_internal_sources.add(tid)
+                        state.mark_ui_internal_source(tid)
 
         # Apply stored configuration (alias, color) from the config store
         # for providers that do NOT self-persist.

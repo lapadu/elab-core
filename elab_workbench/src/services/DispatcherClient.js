@@ -124,6 +124,10 @@ class DispatcherClient {
         this._emit(APP_EVENTS.ON_REPLAY_LOADED, data);
     });
 
+    this.socket.on(SOCKET_EVENTS.REPLAY_RESET, (data) => {
+        this._emit(APP_EVENTS.ON_REPLAY_RESET, data);
+    });
+
     this.socket.on(SOCKET_EVENTS.SESSION_LIST, (data) => {
         this._emit(APP_EVENTS.ON_SESSION_LIST, data);
     });
@@ -150,6 +154,10 @@ class DispatcherClient {
     this.socket.on(SOCKET_EVENTS.PENDING_DEVICES, (data) => {
       // List of unknown / un-approved providers awaiting operator decision.
       this._emit(APP_EVENTS.ON_PENDING_DEVICES, data?.devices || data);
+    });
+
+    this.socket.on(SOCKET_EVENTS.TASK_CONFIG_CHANGED, (data) => {
+      this._emit(APP_EVENTS.ON_TASK_CONFIG_CHANGED, data);
     });
 
 

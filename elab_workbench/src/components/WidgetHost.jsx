@@ -3,6 +3,8 @@ import { Icons } from "../utils/Shared.jsx";
 import { RemoteWidgetLoader } from "./WidgetLoader.jsx";
 import { PLUGIN_REGISTRY } from "./PluginRegistry.jsx";
 import { factoryManager } from "../services/FactoryManager.js";
+import { createRecordedBufferView } from "../utils/replayStreams.js";
+import { taskSupportsTrigger, applyDroppedTrigger } from "../plugins/core/utils/configUtils.js";
 
 const ErrorFallback = () => (
   <div className="text-red-500 p-2 text-xs">
@@ -132,6 +134,8 @@ export const WidgetHost = memo(
     useEffect(() => {
       const taskId = task.originalId || task.id;
       if (task.ui?.isUiInstance) return;
+      // A recorded task only ever renders replayed data.
+      if (task.is_recorded) return;
 
       if (task.virtual && sourcePlugin && sourcePlugin.simulation) {
         factoryManager.startFactory(task, sourcePlugin);
@@ -196,42 +200,17 @@ export const WidgetHost = memo(
       return renderers;
     }, [task.ui, availableViews]);
 
-    // For recorded tasks the replayer emits data under the "rec_*" sourceId
-    // (matching task.id), but many templates look up data via task.originalId
-    // first (which points to the live buffer).  We use a Proxy so that
-    // .get(originalId) is redirected to .get(rec_id) at access time – this
-    // avoids the timing problem where the rec buffer doesn't exist yet when
-    // the memo first runs.  Because streamBuffers is a single mutable Map
-    // whose reference never changes, the Proxy always sees the latest state.
-    const effectiveStreamBuffers = useMemo(() => {
-      if (task.is_recorded && task.originalId && task.id !== task.originalId) {
-        const recId = task.id;
-        const origId = task.originalId;
-        return new Proxy(streamBuffers, {
-          get(target, prop, receiver) {
-            if (prop === 'get') {
-              return (key) => {
-                if (key === origId) {
-                  return target.get(recId) ?? target.get(key);
-                }
-                return target.get(key);
-              };
-            }
-            if (prop === 'has') {
-              return (key) => {
-                if (key === origId) {
-                  return target.has(recId) || target.has(key);
-                }
-                return target.has(key);
-              };
-            }
-            const val = Reflect.get(target, prop, receiver);
-            return typeof val === 'function' ? val.bind(target) : val;
-          },
-        });
-      }
-      return streamBuffers;
-    }, [streamBuffers, task.id, task.originalId, task.is_recorded]);
+    // A recorded task must behave like its own source: the replayer publishes
+    // under "rec_*" ids while templates still look data up by the live id.
+    // Only that one id is shadowed, so live channels can still be added to a
+    // replay widget on purpose.
+    const effectiveStreamBuffers = useMemo(
+      () =>
+        task.is_recorded
+          ? createRecordedBufferView(streamBuffers, task.originalId)
+          : streamBuffers,
+      [streamBuffers, task.is_recorded, task.originalId],
+    );
 
     const wrappedOnUpdateTask = useCallback(
       (updatedTask) => {
@@ -361,19 +340,26 @@ export const WidgetHost = memo(
     }, [onTouchDragCancel]);
 
     // Intercept drops on MEASURE tasks: wire the sensor as inputs.source
-    // instead of letting the grid replace this slot.
     const handleWidgetDrop = useCallback((e) => {
-      if (task.type !== "MEASURE") return;
-
       const dataStr = e.dataTransfer.getData("task");
       if (!dataStr) return;
-
-      e.preventDefault();
-      e.stopPropagation();
 
       try {
         const droppedTask = JSON.parse(dataStr);
         if (droppedTask.id === task.id) return;
+
+        const isTrigger = droppedTask.type === 'TRIGGER';
+        const isTriggerSupported = isTrigger && taskSupportsTrigger(task);
+
+        if (!isTriggerSupported && task.type !== "MEASURE") return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (isTrigger) {
+          wrappedOnUpdateTask(applyDroppedTrigger(task, droppedTask));
+          return;
+        }
 
         if (!task.inputs?.source) {
           wrappedOnUpdateTask({ ...task, inputs: { ...task.inputs, source: droppedTask } });
@@ -385,16 +371,16 @@ export const WidgetHost = memo(
           }
         }
       } catch (err) {
-        console.error("Error handling drop on MEASURE widget:", err);
+        console.error("Error handling drop on widget:", err);
       }
     }, [task, wrappedOnUpdateTask]);
 
     const handleWidgetDragOver = useCallback((e) => {
-      if (task.type === "MEASURE") {
+      if (task.type === "MEASURE" || taskSupportsTrigger(task)) {
         e.preventDefault();
         e.stopPropagation();
       }
-    }, [task.type]);
+    }, [task]);
 
     const handleFullscreen = () => {
         if (!widgetHostRef.current) return;
@@ -436,9 +422,13 @@ export const WidgetHost = memo(
         {/* HEADER DESKTOP */}
         <div className="hidden md:flex h-8 bg-slate-950/50 border-b border-slate-800 items-center justify-between px-3 shrink-0 z-[60] relative">
           <div
-            className="flex items-center gap-2 min-w-0"
+            className="flex items-center gap-2 min-w-0 cursor-grab active:cursor-grabbing"
             draggable={true}
             onDragStart={handleDragStart}
+            onTouchStart={handleHeaderTouchStart}
+            onTouchMove={handleHeaderTouchMove}
+            onTouchEnd={handleHeaderTouchEnd}
+            onTouchCancel={handleHeaderTouchCancel}
           >
             <div
               className="w-2 h-2 rounded-full shrink-0"

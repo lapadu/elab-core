@@ -4,6 +4,7 @@ import dispatcher from '../services/DispatcherClient';
 import { StreamBuffer } from '../utils/StreamingUtils';
 import { APP_EVENTS } from '../utils/EventTypes';
 import { validateManifest, formatManifestErrors } from '../plugins/core/manifestValidator';
+import { isReplayId, toReplayId } from '../utils/replayStreams';
 
 export const useDispatcherSubscription = (serverUrl) => {
   const [isConnected, setIsConnected] = useState(false);
@@ -87,9 +88,36 @@ export const useDispatcherSubscription = (serverUrl) => {
       });
     };
 
+    const handleTaskConfigChanged = (data) => {
+      const { task_id, changes } = data;
+      if (!task_id || !changes) return;
+      setProviders((prev) => {
+        if (!Array.isArray(prev)) return prev;
+        return prev.map((p) => {
+          let updated = false;
+          const updatedTasks = (p.tasks || []).map((t) => {
+            if (t.id === task_id) {
+              updated = true;
+              return { ...t, ...changes };
+            }
+            return t;
+          });
+          if (updated) {
+            return { ...p, tasks: updatedTasks };
+          }
+          return p;
+        });
+      });
+    };
+
     const handleStream = (streamData) => {
-      const id = streamData.sourceId;
-      if (!id) return;
+      const rawId = streamData.sourceId;
+      if (!rawId) return;
+      // Hard separation between a recording and its live source: replay
+      // samples only ever land in a "rec_" buffer, live samples never do.
+      const isReplay = streamData._is_replay === true;
+      const id = isReplay ? toReplayId(rawId) : rawId;
+      if (!isReplay && isReplayId(id)) return;
       if (!streamBuffers.has(id)) {
         // Cap memory: 60 000 points OR last 5 minutes, whichever hits first.
         // 5 min @ 1 kHz = 300k points -> point cap kicks in; for low-rate
@@ -98,13 +126,23 @@ export const useDispatcherSubscription = (serverUrl) => {
       }
       streamBuffers.get(id).push(streamData);
     };
+
+    // A replay position jump (stop / seek / rewind on play) invalidates every
+    // buffered replay sample, so flush them before the new segment arrives.
+    const handleReplayReset = () => {
+      streamBuffers.forEach((buffer, id) => {
+        if (isReplayId(id)) buffer.clear();
+      });
+    };
     
     // Register handlers through the shared event constants.
     dispatcher.on(APP_EVENTS.ON_CONNECTION_ESTABLISHED, handleConnect);
     dispatcher.on(APP_EVENTS.ON_DISCONNECT, handleDisconnect);
     dispatcher.on(APP_EVENTS.ON_PROVIDER_UPDATE, handleProviders);
     dispatcher.on(APP_EVENTS.ON_PROVIDER_OFFLINE, handleProviderOffline);
+    dispatcher.on(APP_EVENTS.ON_TASK_CONFIG_CHANGED, handleTaskConfigChanged);
     dispatcher.on(APP_EVENTS.ON_DATA_STREAM, handleStream);
+    dispatcher.on(APP_EVENTS.ON_REPLAY_RESET, handleReplayReset);
     dispatcher.on(APP_EVENTS.ON_SESSION_STATUS, handleSession);
     dispatcher.on(APP_EVENTS.ON_SCRIPTS_UPDATE, handleScripts);
     dispatcher.on(APP_EVENTS.ON_PENDING_DEVICES, handlePending);
@@ -114,7 +152,9 @@ export const useDispatcherSubscription = (serverUrl) => {
       dispatcher.off(APP_EVENTS.ON_DISCONNECT, handleDisconnect);
       dispatcher.off(APP_EVENTS.ON_PROVIDER_UPDATE, handleProviders);
       dispatcher.off(APP_EVENTS.ON_PROVIDER_OFFLINE, handleProviderOffline);
+      dispatcher.off(APP_EVENTS.ON_TASK_CONFIG_CHANGED, handleTaskConfigChanged);
       dispatcher.off(APP_EVENTS.ON_DATA_STREAM, handleStream);
+      dispatcher.off(APP_EVENTS.ON_REPLAY_RESET, handleReplayReset);
       dispatcher.off(APP_EVENTS.ON_SESSION_STATUS, handleSession);
       dispatcher.off(APP_EVENTS.ON_SCRIPTS_UPDATE, handleScripts);
       dispatcher.off(APP_EVENTS.ON_PENDING_DEVICES, handlePending);

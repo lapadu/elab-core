@@ -11,6 +11,16 @@ from .session_utils import list_recorded_sessions
 
 logger = logging.getLogger(__name__)
 
+# Bumped when the on-disk session layout changes in a way readers must know.
+SESSION_SCHEMA_VERSION = 1
+
+# How a source's timestamps were anchored. Recorded per source so a later
+# multi-session composer knows how precisely two tracks can be aligned:
+#   device - the device sent absolute epoch times and they were passed through
+#   server - the device sent a local clock and the dispatcher anchored it
+TIME_SOURCE_DEVICE = 'device'
+TIME_SOURCE_SERVER = 'server'
+
 # pylint: disable=too-many-instance-attributes
 class SessionRecorder:
     """A class to record session data to a SQLite database."""
@@ -21,6 +31,9 @@ class SessionRecorder:
         self.cursor = None
         self.db_path = None
         self.buffer = []
+        # Source id -> time_source, not yet written to session_sources.
+        self._pending_sources = {}
+        self._known_sources = {}
         # Tunables: flush when buffer fills OR after a short time window so
         # low-rate streams don't sit unwritten for ages, and high-rate streams
         # don't lock the disk on every event.
@@ -64,6 +77,24 @@ class SessionRecorder:
                 provider_id TEXT PRIMARY KEY, manifest TEXT
             )
         """)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS session_meta (
+                key TEXT PRIMARY KEY, value TEXT
+            )
+        """)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS session_sources (
+                source_id TEXT PRIMARY KEY, time_source TEXT, first_seen_ms REAL
+            )
+        """)
+        self.cursor.executemany(
+            "INSERT OR REPLACE INTO session_meta (key, value) VALUES (?, ?)",
+            [
+                ('schema_version', str(SESSION_SCHEMA_VERSION)),
+                ('origin', 'recorded'),
+                ('created_at_ms', str(time.time() * 1000.0)),
+            ],
+        )
         # Only persist manifests for tasks that are currently active.
         manifests_to_store = {}
         with self.state.atomic_update():
@@ -89,6 +120,8 @@ class SessionRecorder:
         self.state.current_session_id = session_id
         self.state.recording = True
         self.buffer = []
+        self._pending_sources = {}
+        self._known_sources = {}
         self.last_flush = time.time()
 
         self.write({
@@ -109,12 +142,13 @@ class SessionRecorder:
         )
         return {'session_id': session_id, 'status': 'started'}
 
-    def write(self, event, binary_blob=None):
+    def write(self, event, binary_blob=None, time_source=None):
         """
         Writes an event to the database buffer.
 
         binary_blob can contain optional bytes, such as JPEG data, for
-        efficient BLOB storage.
+        efficient BLOB storage. time_source records how the source's
+        timestamps were anchored (see TIME_SOURCE_*).
         """
         if not self.state.recording or not self.conn:
             return
@@ -132,9 +166,14 @@ class SessionRecorder:
 
         now = time.time()
         with self._write_lock:
+            source_id = payload.get('sourceId', 'system')
+            if time_source and self._known_sources.get(source_id) != time_source:
+                self._known_sources[source_id] = time_source
+                self._pending_sources[source_id] = (time_source, evt_time)
+
             self.buffer.append((
                 evt_time,
-                payload.get('sourceId', 'system'),
+                source_id,
                 dist,
                 event.get('type', 'UNKNOWN'),
                 json.dumps(event),  # JSON payload, potentially without the base64 blob.
@@ -156,23 +195,56 @@ class SessionRecorder:
 
     def _flush_locked(self):
         """Flush implementation; assumes self._write_lock is held."""
-        if not self.conn or not self.cursor or not self.buffer:
+        if not self.conn or not self.cursor:
+            return
+        if not self.buffer and not self._pending_sources:
             return
         try:
-            self.cursor.executemany(
-                """
-                INSERT INTO session_log (
-                    event_time_ms, source_id, distribution, type,
-                    payload, binary_data, ingest_ts
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                self.buffer,
-            )
+            if self._pending_sources:
+                self.cursor.executemany(
+                    "INSERT OR REPLACE INTO session_sources "
+                    "(source_id, time_source, first_seen_ms) VALUES (?, ?, ?)",
+                    [(sid, ts, seen) for sid, (ts, seen) in self._pending_sources.items()],
+                )
+                self._pending_sources = {}
+            if self.buffer:
+                self.cursor.executemany(
+                    """
+                    INSERT INTO session_log (
+                        event_time_ms, source_id, distribution, type,
+                        payload, binary_data, ingest_ts
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    self.buffer,
+                )
+                self.buffer = []
             self.conn.commit()
-            self.buffer = []
             self.last_flush = time.time()
         except sqlite3.Error as e:
             logger.error("DB Write Error: %s", e)
+
+    def _write_time_bounds(self):
+        """Persist the recording's time span so readers don't have to guess it."""
+        if not self.conn or not self.cursor:
+            return
+        try:
+            self.cursor.execute(
+                "SELECT MIN(event_time_ms), MAX(event_time_ms) FROM session_log "
+                "WHERE type = 'DATA_STREAM'"
+            )
+            row = self.cursor.fetchone()
+            if not row or row[0] is None or row[1] is None:
+                return
+            self.cursor.executemany(
+                "INSERT OR REPLACE INTO session_meta (key, value) VALUES (?, ?)",
+                [
+                    ('session_start_ms', str(float(row[0]))),
+                    ('session_end_ms', str(float(row[1]))),
+                ],
+            )
+            self.conn.commit()
+        except sqlite3.Error as e:
+            logger.error("Failed to write session time bounds: %s", e)
 
     def stop(self):
         """Stops the current recording session."""
@@ -181,6 +253,7 @@ class SessionRecorder:
 
         self.write({"type": "SESSION_END", "timestamp": time.time() * 1000})
         self._flush()
+        self._write_time_bounds()
 
         if self.conn:
             self.conn.close()

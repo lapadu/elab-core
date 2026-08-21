@@ -14,6 +14,8 @@ const SinusGenWidget = ({ task, isConfigMode, onUpdateTask }) => {
 
   const frequency = task.config?.frequency || 1;
   const amplitude = task.config?.amplitude || 5;
+  const dcOffset = task.config?.dcOffset ?? 0;
+  const phaseOffset = task.config?.phaseOffset ?? 0;
   const noiseEnabled = task.config?.noiseEnabled ?? true;
 
   return (
@@ -46,6 +48,28 @@ const SinusGenWidget = ({ task, isConfigMode, onUpdateTask }) => {
             step="0.1"
             onChange={(e) => updateConfig("amplitude", Number(e.target.value))}
             unit="V"
+            colorClass="accent-green-500"
+            textColorClass="text-green-400"
+          />
+          <SliderControl
+            label="DC Offset"
+            value={dcOffset}
+            min="0"
+            max="10"
+            step="0.1"
+            onChange={(e) => updateConfig("dcOffset", Number(e.target.value))}
+            unit="V"
+            colorClass="accent-green-500"
+            textColorClass="text-green-400"
+          />
+          <SliderControl
+            label="Phase"
+            value={phaseOffset}
+            min="0"
+            max="360"
+            step="1"
+            onChange={(e) => updateConfig("phaseOffset", Number(e.target.value))}
+            unit="°"
             colorClass="accent-green-500"
             textColorClass="text-green-400"
           />
@@ -120,6 +144,8 @@ export const SineGenClientPlugin = new PluginBuilder("plugin_sine_gen_v1", "Clie
             const intervalId = setInterval(() => {
                 const freq = Number(currentConfig.frequency) || 1;
                 const amp = Number(currentConfig.amplitude) || 5;
+                const dcOffset = Number(currentConfig.dcOffset) || 0;
+                const phaseOffsetRad = (Number(currentConfig.phaseOffset) || 0) * (Math.PI / 180);
                 const noiseEnabled = currentConfig.noiseEnabled ?? true;
                 const noiseLevel = currentConfig.noiseLevel || 0.1;
 
@@ -139,7 +165,7 @@ export const SineGenClientPlugin = new PluginBuilder("plugin_sine_gen_v1", "Clie
                 const phaseInc = 2 * Math.PI * freq * (SAMPLE_PERIOD_MS / 1000);
                 const values = [];
                 for (let i = 0; i < count; i++) {
-                    let val = amp * Math.sin(phase);
+                    let val = amp * Math.sin(phase + phaseOffsetRad) + dcOffset;
                     if (noiseEnabled) {
                         val += (Math.random() - 0.5) * amp * noiseLevel;
                     }
@@ -195,6 +221,8 @@ export const SineGenClientPlugin = new PluginBuilder("plugin_sine_gen_v1", "Clie
         config: {
             frequency: 1,
             amplitude: 5,
+            dcOffset: 0,
+            phaseOffset: 0,
             range: [-5, 5],
             unit: "V",
             factor: 1.0,

@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback } from "react";
 import { Icons, COLOR_PALETTE } from "../../../utils/Shared";
-import dispatcher from "../../../services/DispatcherClient";
+import { useChannelSources } from "../hooks/useChannelSources";
 
 const FFT_SIZE_OPTIONS = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072];
 
@@ -14,56 +14,7 @@ const SpectrumConfigWidget = ({ task, onUpdateTask }) => {
     [task, onUpdateTask],
   );
 
-  const sources = useMemo(() => {
-    const s = [];
-    if (task.inputs?.source) s.push(task.inputs.source);
-    if (task.extraChannels) s.push(...task.extraChannels);
-    return Array.from(new Map(s.map((src) => [src?.id, src])).values());
-  }, [task]);
-
-  const removeSource = (sourceId) => {
-    const newInputs =
-      task.inputs?.source?.id === sourceId
-        ? { ...task.inputs, source: null }
-        : task.inputs;
-    const newExtra = (task.extraChannels || []).filter(
-      (c) => c.id !== sourceId,
-    );
-    onUpdateTask({ ...task, inputs: newInputs, extraChannels: newExtra });
-  };
-
-  const updateSourceMeta = useCallback(
-    (sourceId, key, value) => {
-      const isPrimary = task.inputs?.source?.id === sourceId;
-      let updatedSource;
-      if (isPrimary) {
-        updatedSource = { ...task.inputs.source, [key]: value };
-      } else {
-        const source = task.extraChannels?.find((c) => c.id === sourceId);
-        if (source) updatedSource = { ...source, [key]: value };
-      }
-      if (!updatedSource) return;
-
-      const newInputs = isPrimary
-        ? { ...task.inputs, source: updatedSource }
-        : task.inputs;
-      const newExtra = isPrimary
-        ? task.extraChannels
-        : task.extraChannels.map((c) =>
-            c.id === sourceId ? updatedSource : c,
-          );
-      onUpdateTask({ ...task, inputs: newInputs, extraChannels: newExtra });
-
-      dispatcher.sendControlCommand(
-        `prov_${updatedSource.originalId || updatedSource.id}`,
-        {
-          action: "update_meta",
-          payload: { [key]: value },
-        },
-      );
-    },
-    [task, onUpdateTask],
-  );
+  const { sources, addSource, removeSource, updateSourceMeta } = useChannelSources(task, onUpdateTask);
 
   // --- Drop handler (only accept time-domain sensor signals) ---
   const handleDragOver = (e) => {
@@ -81,15 +32,7 @@ const SpectrumConfigWidget = ({ task, onUpdateTask }) => {
         );
         return;
       }
-      if (dropped.id === task.id || sources.find((s) => s.id === dropped.id))
-        return;
-      const newInputs = !task.inputs?.source
-        ? { ...task.inputs, source: dropped }
-        : task.inputs;
-      const newExtra = task.inputs?.source
-        ? [...(task.extraChannels || []), dropped]
-        : task.extraChannels || [];
-      onUpdateTask({ ...task, inputs: newInputs, extraChannels: newExtra });
+      addSource(dropped);
     } catch (err) {
       console.error("Error handling drop in SpectrumConfig:", err);
     }

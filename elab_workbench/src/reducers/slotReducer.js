@@ -17,6 +17,22 @@ const _defaultTaskInstanceCache = new Map();
  */
 export const createTaskInstanceCache = () => new Map();
 
+/**
+ * Stable identity of a task, used as instance-cache key and as a channel's
+ * `originalId`.
+ *
+ * Live tasks are identified by their original id so the same source dropped
+ * twice reuses one instance. Recorded tasks carry the live id in `originalId`,
+ * so they must be identified by their own `rec_*` id — otherwise a recording
+ * and its live source would collapse into one instance and the widget would
+ * render live data instead of the recording.
+ */
+export const taskIdentity = (task) => {
+    if (!task) return undefined;
+    if (task.is_recorded) return task.id || task.originalId || task.groupId;
+    return task.originalId || task.id || task.groupId;
+};
+
 export const slotReducer = (state, action) => {
     // Allow the caller to inject the cache so the reducer stays pure-ish; fall
     // back to a module-level Map for legacy call sites.
@@ -30,7 +46,7 @@ export const slotReducer = (state, action) => {
             
             // Reuse the original task identity when available so drag-and-drop
             // does not create duplicate instances for the same source task.
-            const cacheKey = baseTask.originalId || baseTask.id || baseTask.groupId;
+            const cacheKey = taskIdentity(baseTask);
             
             let taskInstance;
             if (taskInstanceCache.has(cacheKey)) {
@@ -55,9 +71,11 @@ export const slotReducer = (state, action) => {
                 console.log(`🆕 Created new task instance: ${cacheKey}`);
                 
             }
-            // Start the factory centrally when the task is virtual.
+            // Start the factory centrally when the task is virtual. Recorded
+            // tasks are flagged virtual too, but they are fed by the replayer
+            // only - starting the live factory would mix simulated data in.
             const plugin = getPlugin(baseTask.groupId);
-            if (plugin && baseTask.virtual) {
+            if (plugin && baseTask.virtual && !baseTask.is_recorded) {
                 factoryManager.startFactory(baseTask, plugin);
             }
             
@@ -68,7 +86,7 @@ export const slotReducer = (state, action) => {
             const { index, task } = action;
             
             // Refresh the cached instance using the original task identity when possible.
-            const cacheKey = task.originalId || task.id || task.groupId;
+            const cacheKey = taskIdentity(task);
             if (taskInstanceCache.has(cacheKey)) {
                 taskInstanceCache.set(cacheKey, task);
             }
@@ -81,16 +99,16 @@ export const slotReducer = (state, action) => {
             const task = state[index];
             
             // Only remove the cache entry when no slot still uses the task.
+            const removedKey = taskIdentity(task);
             const isUsedElsewhere = Object.entries(state).some(
                 ([slotIdx, slotTask]) => 
                     slotIdx !== String(index) && 
-                    slotTask?.originalId === task?.originalId
+                    slotTask && taskIdentity(slotTask) === removedKey
             );
             
             if (!isUsedElsewhere && task) {
-                const cacheKey = task.originalId || task.id || task.groupId;
-                taskInstanceCache.delete(cacheKey);
-                console.log(`🗑️ Removed task from cache: ${cacheKey}`);
+                taskInstanceCache.delete(removedKey);
+                console.log(`🗑️ Removed task from cache: ${removedKey}`);
             }
             
             return { ...state, [index]: null };
@@ -131,7 +149,7 @@ export const slotReducer = (state, action) => {
                 if (!found) continue;
                 const { task, providerId } = found;
 
-                const cacheKey = task.originalId || task.id || task.groupId;
+                const cacheKey = taskIdentity(task);
                 let instance = taskInstanceCache.get(cacheKey);
                 if (!instance) {
                     instance = {
@@ -168,7 +186,7 @@ export const slotReducer = (state, action) => {
                     const tasks = p.tasks?.length ? p.tasks : [p];
                     const match = tasks.find(t => t.groupId === task.groupId);
                     if (match) {
-                        const cacheKey = task.originalId || task.id || task.groupId;
+                        const cacheKey = taskIdentity(task);
                         const updated = {
                             ...task,
                             id: match.id,
@@ -194,7 +212,7 @@ export const slotReducer = (state, action) => {
             
             const newChannel = {
                 id: channelTask.id,
-                originalId: channelTask.originalId || channelTask.id,
+                originalId: taskIdentity(channelTask),
                 name: channelTask.name,
                 color: channelTask.color,
                 config: channelTask.config || {}
@@ -209,7 +227,7 @@ export const slotReducer = (state, action) => {
             };
             
             // ✅ Cache aktualisieren
-            const cacheKey = updatedTask.originalId || updatedTask.id || updatedTask.groupId;
+            const cacheKey = taskIdentity(updatedTask);
             taskInstanceCache.set(cacheKey, updatedTask);
             
             return { ...state, [index]: updatedTask };

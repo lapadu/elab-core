@@ -33,16 +33,24 @@ export function zoomY(vp, cursorYNorm, factor) {
 
 /**
  * Compute X zoom in "duration" mode (scope).
+ *
+ * The visible window ends at `anchor - x_offset`, where the anchor itself may
+ * scale with the duration (`anchor = base + anchorFraction * duration`). That is
+ * the case while the view is trigger-aligned to the window centre
+ * (anchorFraction 0.5); for the live/paused edge the anchor is fixed (0).
+ * Both cases must be accounted for to keep the cursor's time value invariant.
+ *
  * @param {ViewportDuration} vp
  * @param {number} cursorXNorm normalized [0, 1] – 0 = left
  * @param {number} factor
  * @param {(off: number, dur: number) => number} [clamp] optional offset clamp
+ * @param {number} [anchorFraction=0] fraction of the duration the anchor moves by
  * @returns {{ x_duration: number, x_offset: number }}
  */
-export function zoomXDuration(vp, cursorXNorm, factor, clamp) {
+export function zoomXDuration(vp, cursorXNorm, factor, clamp, anchorFraction = 0) {
     const newDuration = vp.x_duration * factor
     const durationDelta = vp.x_duration - newDuration
-    let newOffset = vp.x_offset + (1 - cursorXNorm) * durationDelta
+    let newOffset = vp.x_offset + ((1 - cursorXNorm) - anchorFraction) * durationDelta
     if (clamp) {
         newOffset = clamp(newOffset, newDuration)
     } else {

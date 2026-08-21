@@ -265,10 +265,24 @@ class TestTaskConfigPersistence:
             'color': '#ef4444'
         }, room='sid-1')
 
+    def test_set_task_decimals_stored_in_db(self, state_with_store, config_store):
+        """Decimals is stored in ConfigStore when provider does not self-persist."""
+        manifest = {
+            "id": "prov-1", "name": "Test", "category": "HARDWARE",
+            "persistConfig": False,
+            "tasks": [{"id": "task-1", "name": "Sensor", "type": "SENSOR",
+                       "ui": {"mode": "generic"}}]
+        }
+        state_with_store.add_provider("sid-1", manifest)
+        result = state_with_store.set_task_decimals("task-1", 4)
+        assert result is True
+        assert config_store.get_task_config("task-1")["decimals"] == 4
+
     def test_apply_stored_config_on_registration(self, state_with_store, config_store):
-        """Stored alias/color is applied to manifest on registration."""
+        """Stored alias/color/decimals is applied to manifest on registration."""
         config_store.set_task_alias("task-1", "Stored Alias")
         config_store.set_task_color("task-1", "#abcdef")
+        config_store.set_task_decimals("task-1", 3)
 
         manifest = {
             "id": "prov-1", "name": "Test", "category": "HARDWARE",
@@ -282,6 +296,7 @@ class TestTaskConfigPersistence:
         task = manifest["tasks"][0]
         assert task["alias"] == "Stored Alias"
         assert task["color"] == "#abcdef"
+        assert task["decimals"] == 3
 
     def test_apply_stored_config_skipped_for_self_persist(self, state_with_store, config_store):
         """Stored config is NOT applied when provider self-persists."""

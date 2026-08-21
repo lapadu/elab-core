@@ -5,12 +5,15 @@ import { Icons, COLOR_PALETTE } from "../../../utils/Shared";
  * Floating channel menu that appears when clicking the channel indicator.
  * Each channel is a compact single row: color dot (expands a palette),
  * name, special actions (e.g. RAW capture), and a remove button.
+ * Rows can be reordered via drag'n'drop (drag handle); list order acts like
+ * layers in a paint program — the topmost channel is drawn on top of the others.
  */
 const ChannelMenu = ({
   sources,
   onRemoveSource,
   onColorChange,
   onAction,
+  onReorder,
   rawCaptureAwaiting,
   singleSource,
   onClose,
@@ -18,6 +21,38 @@ const ChannelMenu = ({
 }) => {
   const menuRef = useRef(null);
   const [expandedColorId, setExpandedColorId] = useState(null);
+  const dragIndexRef = useRef(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+
+  const handleDragStart = (e, index) => {
+    dragIndexRef.current = index;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(index));
+  };
+
+  const handleRowDragOver = (e, index) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dragOverIndex !== index) setDragOverIndex(index);
+  };
+
+  const handleRowDrop = (e, index) => {
+    e.preventDefault();
+    const fromIndex = dragIndexRef.current;
+    dragIndexRef.current = null;
+    setDragOverIndex(null);
+    if (fromIndex === null || fromIndex === index) return;
+
+    const reordered = [...sources];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(index, 0, moved);
+    onReorder?.(reordered.map((s) => s.id));
+  };
+
+  const handleDragEnd = () => {
+    dragIndexRef.current = null;
+    setDragOverIndex(null);
+  };
 
   // Close the menu when clicking outside.
   useEffect(() => {
@@ -61,10 +96,30 @@ const ChannelMenu = ({
           </div>
         )}
 
-        {sources.map((s) => (
-          <div key={s.id} className="px-3 py-1.5 hover:bg-slate-800/40 transition-colors">
+        {sources.map((s, index) => (
+          <div
+            key={s.id}
+            onDragOver={(e) => handleRowDragOver(e, index)}
+            onDrop={(e) => handleRowDrop(e, index)}
+            className={`px-3 py-1.5 hover:bg-slate-800/40 transition-colors ${
+              dragOverIndex === index ? "bg-blue-900/30 ring-1 ring-inset ring-blue-500/40" : ""
+            }`}
+          >
             {/* Main row */}
             <div className="flex items-center gap-2">
+              {/* Drag handle — reorders the layer stack */}
+              {sources.length > 1 && (
+                <button
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, index)}
+                  onDragEnd={handleDragEnd}
+                  className="cursor-grab active:cursor-grabbing text-slate-600 hover:text-slate-400 shrink-0"
+                  title="Drag to reorder"
+                >
+                  <Icons.Move size={12} />
+                </button>
+              )}
+
               {/* Color dot — click toggles palette */}
               <button
                 onClick={() => setExpandedColorId(prev => prev === s.id ? null : s.id)}
@@ -114,7 +169,7 @@ const ChannelMenu = ({
 
             {/* Expandable color palette */}
             {expandedColorId === s.id && (
-              <div className="flex gap-1 flex-wrap mt-1.5 ml-6">
+              <div className={`flex gap-1 flex-wrap mt-1.5 ${sources.length > 1 ? "ml-9" : "ml-6"}`}>
                 {COLOR_PALETTE.map((c) => (
                   <button
                     key={c}

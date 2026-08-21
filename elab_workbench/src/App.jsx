@@ -17,6 +17,7 @@ import { LayoutSettings } from './components/LayoutSettings.jsx';
 import { HelpPlugin } from './plugins/Help/index.jsx';
 import { DispatchFlowPlugin } from './plugins/DispatchFlow/index.jsx';
 import { mapProviderTaskToAvailableDevice } from './utils/mapProviderTaskToAvailableDevice.js';
+import { taskSupportsTrigger, applyDroppedTrigger } from './plugins/core/utils/configUtils.js';
 
 function remapTaskReference(savedObj, templateSlots, loadedSlots) {
   if (!savedObj || typeof savedObj !== 'object') return savedObj;
@@ -118,6 +119,7 @@ export default function App() {
   // the providers list arrives so we can resolve task ids to instances.
   const pendingSnapshotRef = useRef(null);
   const providersRef = useRef(providers);
+  const draggedTaskRef = useRef(null);
 
   const [layout, setLayout] = useState('grid-2x2');
   const [isHelpOpen, setIsHelpOpen] = useState(false);
@@ -177,27 +179,22 @@ export default function App() {
           }
       }
     };
+
+    // Transport control for the loaded recording. Buffer flushing on every
+    // position jump (stop / seek / rewind on play) is driven by the server's
+    // replay_reset event, so the widget never splices two positions together.
+    const handleReplayControl = useCallback((action, value = null) => {
+      if (action === 'stop') {
+        setSeekValue(0);
+        setReplayState(prev => ({ ...prev, state: 'stopped', time: 0 }));
+      }
+      dispatcher.sendReplayAction(action, value);
+    }, []);
   
     // --- EFFECT HOOKS for dispatcher events ---
     useEffect(() => {
       dispatcher.getSessions();
 
-      const handleReplayControl = (action, value = null) => {
-        if (action === 'stop') {
-          setReplayState(prev => ({ ...prev, state: 'paused' }));
-          setSeekValue(0);
-          dispatcher.sendReplayAction('seek', 0); // Seek to beginning
-          dispatcher.sendReplayAction('pause');
-        } else {
-          // Beim Seek-Befehl die Buffer der aufgezeichneten Tasks leeren
-          if (action === 'seek') {
-            const taskIds = recordedTasks.flatMap(p => (p.tasks || []).map(t => t.id));
-            clearStreamBuffers(taskIds);
-          }
-          dispatcher.sendReplayAction(action, value);
-        }
-      };
-  
       const handleSessionList = (list) => {
           setSessions(list || []);
           // Preserve selected session if it still exists in the new list
@@ -237,10 +234,14 @@ export default function App() {
       const handleReplayProgress = (progress) => {
           const time = progress.time_ms || 0;
           const duration = progress.duration || replayState.duration || 1;
-          
-          // Auto-stop at the end
-          if (time >= duration) {
-              handleReplayControl('stop');
+
+          // End of the recording: the server has already paused, so only the
+          // UI state follows. The position stays at the end; pressing play
+          // rewinds server-side.
+          if (duration > 0 && time >= duration) {
+              setReplayState(prev => ({ ...prev, state: 'stopped', time: duration, duration }));
+              setSeekValue(duration);
+              return;
           }
   
           // Prevent the slider from jumping while the user is dragging it.
@@ -304,6 +305,47 @@ export default function App() {
       };
       dispatcher.on(APP_EVENTS.ON_ACTIVE_TASKS_SNAPSHOT, handleActiveTasksSnapshot);
 
+      const handleTaskConfigChanged = (data) => {
+        const { task_id, changes } = data;
+        if (!task_id || !changes) return;
+        Object.entries(slotsRef.current).forEach(([index, slot]) => {
+            if (!slot) return;
+            let updated = false;
+            let updatedSlot = { ...slot };
+
+            if (slot.id === task_id) {
+                updatedSlot = { ...updatedSlot, ...changes };
+                updated = true;
+            }
+            
+            if (slot.inputs?.source?.id === task_id) {
+                updatedSlot = {
+                    ...updatedSlot,
+                    inputs: {
+                        ...updatedSlot.inputs,
+                        source: { ...updatedSlot.inputs.source, ...changes }
+                    }
+                };
+                updated = true;
+            }
+
+            if (slot.extraChannels?.some(ch => ch.id === task_id)) {
+                updatedSlot = {
+                    ...updatedSlot,
+                    extraChannels: slot.extraChannels.map(ch =>
+                        ch.id === task_id ? { ...ch, ...changes } : ch
+                    )
+                };
+                updated = true;
+            }
+
+            if (updated) {
+                dispatchSlots({ type: 'UPDATE_TASK', index, task: updatedSlot });
+            }
+        });
+      };
+      dispatcher.on(APP_EVENTS.ON_TASK_CONFIG_CHANGED, handleTaskConfigChanged);
+
       return () => {
           dispatcher.off(APP_EVENTS.ON_SESSION_LIST, handleSessionList);
           dispatcher.off(APP_EVENTS.ON_SESSION_STATUS, handleSessionStatus);
@@ -314,8 +356,9 @@ export default function App() {
           dispatcher.off(APP_EVENTS.ON_PROVIDER_META_CHANGED, handleProviderMetaChanged);
           dispatcher.off(APP_EVENTS.ON_TASK_REJECTED, handleTaskRejected);
           dispatcher.off(APP_EVENTS.ON_ACTIVE_TASKS_SNAPSHOT, handleActiveTasksSnapshot);
+          dispatcher.off(APP_EVENTS.ON_TASK_CONFIG_CHANGED, handleTaskConfigChanged);
       };
-    }, [selectedSession, replayState.duration, recordedTasks, slots, clearStreamBuffers, dispatchSlots]);
+    }, [selectedSession, replayState.duration, slots, dispatchSlots]);
 
     // When providers change, rebind orphaned slot tasks to reconnected providers
     // and replay a deferred snapshot if one is pending.
@@ -333,22 +376,6 @@ export default function App() {
         }
       }
     }, [providers, dispatchSlots]);
-    
-    const handleReplayControl = (action, value = null) => {
-        if (action === 'stop') {
-          setReplayState(prev => ({ ...prev, state: 'paused' }));
-          setSeekValue(0);
-          dispatcher.sendReplayAction('seek', 0); // Seek to beginning
-          dispatcher.sendReplayAction('pause');
-        } else {
-          // Clear recorded-task buffers before seeking.
-          if (action === 'seek') {
-            const taskIds = recordedTasks.flatMap(p => (p.tasks || []).map(t => t.id));
-            clearStreamBuffers(taskIds);
-          }
-          dispatcher.sendReplayAction(action, value);
-        }
-    };
     
     const handleSeekChange = (e) => {
       const val = parseFloat(e.target.value);
@@ -520,7 +547,23 @@ export default function App() {
 
     const bindTaskToMeasureSlot = useCallback((slotIndex, droppedTask) => {
       const currentTask = slotsRef.current[slotIndex];
-      if (!currentTask || currentTask.type !== 'MEASURE' || droppedTask.id === currentTask.id) {
+      if (!currentTask || droppedTask.id === currentTask.id) {
+        return;
+      }
+
+      if (droppedTask.type === 'TRIGGER') {
+        if (!taskSupportsTrigger(currentTask)) {
+          return;
+        }
+        dispatchSlots({
+          type: 'UPDATE_TASK',
+          index: slotIndex,
+          task: applyDroppedTrigger(currentTask, droppedTask),
+        });
+        return;
+      }
+
+      if (currentTask.type !== 'MEASURE') {
         return;
       }
 
@@ -545,12 +588,24 @@ export default function App() {
       });
     }, [dispatchSlots]);
 
-    const resolveTouchDropTargetAtPoint = useCallback((x, y) => {
+    const resolveTouchDropTargetAtPoint = useCallback((x, y, draggedTask) => {
       const element = document.elementFromPoint(x, y);
-      const measureElement = element?.closest?.('[data-widget-slot-index][data-widget-type="MEASURE"]');
-      if (measureElement) {
-        const slotIndex = Number(measureElement.getAttribute('data-widget-slot-index'));
-        return Number.isInteger(slotIndex) ? { kind: 'measure', slotIndex } : null;
+      const isTrigger = draggedTask?.type === 'TRIGGER';
+      
+      const widgetElement = element?.closest?.('[data-widget-slot-index]');
+      if (widgetElement) {
+        const slotIndex = Number(widgetElement.getAttribute('data-widget-slot-index'));
+        if (Number.isInteger(slotIndex)) {
+          const targetTask = slotsRef.current[slotIndex];
+          if (targetTask) {
+            const canAccept = isTrigger 
+              ? taskSupportsTrigger(targetTask)
+              : targetTask.type === 'MEASURE';
+            if (canAccept) {
+              return { kind: 'measure', slotIndex };
+            }
+          }
+        }
       }
 
       const slotElement = element?.closest?.('[data-slot-index]');
@@ -570,8 +625,9 @@ export default function App() {
     }, [placeTaskInSlot]);
 
     const handleTouchDragStart = useCallback((task, point) => {
+      draggedTaskRef.current = task;
       setTouchDragState({ task, x: point.x, y: point.y });
-      setTouchDropTarget(resolveTouchDropTargetAtPoint(point.x, point.y));
+      setTouchDropTarget(resolveTouchDropTargetAtPoint(point.x, point.y, task));
     }, [resolveTouchDropTargetAtPoint]);
 
     const handleTouchDragMove = useCallback((point) => {
@@ -579,24 +635,31 @@ export default function App() {
         if (!prev) return prev;
         return { ...prev, x: point.x, y: point.y };
       });
-      setTouchDropTarget(resolveTouchDropTargetAtPoint(point.x, point.y));
+      setTouchDropTarget(resolveTouchDropTargetAtPoint(point.x, point.y, draggedTaskRef.current));
     }, [resolveTouchDropTargetAtPoint]);
 
     const handleTouchDragEnd = useCallback((point) => {
       setTouchDragState(prev => {
         if (!prev) return null;
-        const target = resolveTouchDropTargetAtPoint(point.x, point.y);
+        const target = resolveTouchDropTargetAtPoint(point.x, point.y, prev.task);
         if (target?.kind === 'measure') {
           bindTaskToMeasureSlot(target.slotIndex, prev.task);
         } else if (target?.kind === 'slot') {
-          placeTaskInSlot(target.slotIndex, prev.task);
+          const currentTask = slotsRef.current[target.slotIndex];
+          if (prev.task?.type === 'TRIGGER' && taskSupportsTrigger(currentTask)) {
+            bindTaskToMeasureSlot(target.slotIndex, prev.task);
+          } else {
+            placeTaskInSlot(target.slotIndex, prev.task);
+          }
         }
         return null;
       });
+      draggedTaskRef.current = null;
       setTouchDropTarget(null);
     }, [bindTaskToMeasureSlot, placeTaskInSlot, resolveTouchDropTargetAtPoint]);
 
     const handleTouchDragCancel = useCallback(() => {
+      draggedTaskRef.current = null;
       setTouchDragState(null);
       setTouchDropTarget(null);
     }, []);
@@ -789,13 +852,13 @@ export default function App() {
               type="button"
               onClick={() => setIsHelpOpen(true)}
               className="h-9 px-3 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 flex items-center gap-2 transition-colors"
-              title="Hilfe"
-              aria-label="Hilfe öffnen"
+              title="Help"
+              aria-label="Open Help"
               aria-expanded={isHelpOpen}
               aria-controls="elab-help-panel"
             >
               <Icons.Info size={14} />
-              <span className="text-xs font-semibold uppercase tracking-wide">Hilfe</span>
+              <span className="text-xs font-semibold uppercase tracking-wide">Help</span>
             </button>
           </div>
 
@@ -824,7 +887,7 @@ export default function App() {
                   </button>
                 </div>
                 <div className="flex-1 overflow-auto p-4 md:p-6">
-                  <DispatchFlowPlugin.render slots={slots} />
+                  <DispatchFlowPlugin.render slots={slots} providers={providers} />
                 </div>
               </div>
             </div>

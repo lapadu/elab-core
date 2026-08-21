@@ -343,7 +343,7 @@ export const FirFilterPlugin = new PluginBuilder("system_fir_filter_v1", "FIR Fi
             distribution: payload.distribution,
             startTime: payload.startTime,
             endTime: payload.endTime,
-            timestamp: payload.timestamp || Date.now(),
+            timestamp: payload.timestamp ?? Date.now(),
             timestamps: Array.isArray(payload.timestamps) ? payload.timestamps : undefined,
           });
           return;
@@ -358,7 +358,7 @@ export const FirFilterPlugin = new PluginBuilder("system_fir_filter_v1", "FIR Fi
             sourceId: outputSourceId,
             value: filtered,
             color: currentOutputColor,
-            timestamp: payload.timestamp || Date.now(),
+            timestamp: payload.timestamp ?? Date.now(),
           });
         }
       };

@@ -3,6 +3,7 @@ import { downsampleMinMax } from "../../../utils/downsampling";
 import { calculateAxisBounds, drawGrid, TIME_TIERS } from "../utils/GridUtils";
 import { useCanvasInteraction, drawMeasurementOverlay } from "./useCanvasInteraction";
 import { TRIGGER_SYMBOLS } from "../TriggerSymbols";
+import { getActiveTrigger, getTriggers, patchTrigger } from "../utils/configUtils";
 import { SYSTEM_COLORS } from "../../../utils/Shared.jsx";
 
 const uncertaintyHalfWidth = (uncertainty) => {
@@ -15,6 +16,24 @@ const uncertaintyHalfWidth = (uncertainty) => {
     (Number.isFinite(systematic) ? Math.abs(systematic) : 0) +
     (Number.isFinite(randomSigma) ? Math.abs(randomSigma) * k : 0);
   return Number.isFinite(delta) ? delta : 0;
+};
+
+// Fraction of the available height the amplitude should fill on a double-click/autoset fit.
+export const DOUBLE_CLICK_FILL = 0.8;
+
+// AC signals (crossing zero) keep the zero line centered; DC signals keep their
+// own midpoint (mean level) centered and only the AC swing around it is scaled.
+export const computeAmplitudeFitBounds = (globalMin, globalMax, fill = DOUBLE_CLICK_FILL) => {
+  const isAc = globalMin < 0 && globalMax > 0;
+  const center = isAc ? 0 : (globalMin + globalMax) / 2;
+  let halfSignal = isAc
+    ? Math.max(Math.abs(globalMin), Math.abs(globalMax))
+    : (globalMax - globalMin) / 2;
+  if (halfSignal === 0) {
+    halfSignal = center === 0 ? 1 : Math.abs(center) * 0.5;
+  }
+  const half = halfSignal / fill;
+  return { min: center - half, max: center + half };
 };
 
 const withAlpha = (hexColor, alpha) => {
@@ -65,6 +84,9 @@ export const useScopeCanvas = (
   const minBufferTimestamp = useRef(null);
   const maxBufferTimestamp = useRef(null);
   const anchorTimestamp = useRef(0);
+  // Fraction of the window the time anchor moves by when the duration changes:
+  // 0 for the live/paused edge, 0.5 while the view is trigger-aligned to centre.
+  const xAnchorFraction = useRef(0);
 
   // Reset the silence tracker whenever a new RAW capture cycle starts.
   useEffect(() => {
@@ -125,11 +147,13 @@ export const useScopeCanvas = (
     }
   }, [task.config?.timeWindow, task.config?.yMin, task.config?.yMax]);
 
-  // Center viewport when a trigger is newly placed (same as right-double-click).
-  const prevTrigger = useRef(task.config?.trigger ?? null);
+  // Center viewport when a trigger becomes active/newly placed (same as right-double-click).
+  const prevTrigger = useRef(getActiveTrigger(task));
   useEffect(() => {
-    const cur = task.config?.trigger ?? null;
-    if (!prevTrigger.current && cur) {
+    const cur = getActiveTrigger(task);
+    const prev = prevTrigger.current;
+    // Re-center when going from no active trigger to one, or switching trigger.
+    if ((!prev && cur) || (cur && prev && cur.id !== prev.id)) {
       // Center X (bring to live edge)
       viewport.current.x_offset = 0;
       // Center Y on trigger level
@@ -140,9 +164,10 @@ export const useScopeCanvas = (
       setRenderTrigger(c => c + 1);
     }
     prevTrigger.current = cur;
-  }, [task.config?.trigger]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.config?.triggers, task.config?.activeTriggerId, task.config?.trigger]);
 
-  const autoscaleOnce = useCallback(() => {
+  const autoscaleOnce = useCallback((fitToAmplitude = false) => {
     let globalMin = Infinity, globalMax = -Infinity;
     const buffersToUse = uiSettings.isPaused ? pausedData.current : streamBuffers;
     const timestampToUse = uiSettings.isPaused
@@ -168,7 +193,15 @@ export const useScopeCanvas = (
       });
     }
 
-    if (globalMin !== Infinity && globalMax !== -Infinity) {
+    if (globalMin === Infinity || globalMax === -Infinity) return;
+
+    if (fitToAmplitude) {
+      // Double-click fit: scale the amplitude to fill DOUBLE_CLICK_FILL of the height.
+      const bounds = computeAmplitudeFitBounds(globalMin, globalMax);
+      viewport.current.y_min = bounds.min;
+      viewport.current.y_max = bounds.max;
+      updateUiSetting({ yMin: bounds.min, yMax: bounds.max });
+    } else {
       let range = globalMax - globalMin;
       if (range === 0) {
           range = globalMax === 0 ? 2 : Math.abs(globalMax);
@@ -199,7 +232,7 @@ export const useScopeCanvas = (
 
   const onLeftDoubleClickHitTest = useCallback((x, y) => {
     const tp = triggerPixelPos.current;
-    const trig = task.config?.trigger;
+    const trig = getActiveTrigger(task);
     if (!tp || !trig) return false;
 
     const dx = x - tp.x;
@@ -208,16 +241,16 @@ export const useScopeCanvas = (
     if (dist > TRIGGER_HIT_RADIUS) return false;
 
     const nextMode = trig.mode === 'falling' ? 'rising' : 'falling';
-    updateUiSetting({ trigger: { ...trig, mode: nextMode, level: 0 } });
+    updateUiSetting(patchTrigger(task, trig.id, { mode: nextMode, level: 0 }));
     return true;
-  }, [task.config?.trigger, updateUiSetting]);
+  }, [task, updateUiSetting]);
 
-  // Trigger drag: update trigger level as user drags
+  // Trigger drag: update the active trigger's level as the user drags
   const onTriggerDrag = useCallback((yVal) => {
-    if (!task.config?.trigger) return;
-    const trig = { ...task.config.trigger, level: Math.round(yVal * 1000) / 1000 };
-    updateUiSetting({ trigger: trig });
-  }, [task.config, updateUiSetting]);
+    const trig = getActiveTrigger(task);
+    if (!trig) return;
+    updateUiSetting(patchTrigger(task, trig.id, { level: Math.round(yVal * 1000) / 1000 }));
+  }, [task, updateUiSetting]);
 
   // Snap right-click cursor to nearest data point on chart
   const snapToData = useCallback((pixelX, pixelY) => {
@@ -277,11 +310,12 @@ export const useScopeCanvas = (
     xMode: "duration",
     onUpdate,
     clampDurationOffset,
+    getXAnchorFraction: () => xAnchorFraction.current,
     onSettingsChange: (settings) => {
       updateUiSetting(settings);
     },
     onDoubleClick: () => {
-      autoscaleOnce(true); // only scale Y on double click
+      autoscaleOnce(true); // fit amplitude to 80% of height (AC: zero-centered, DC: mean-centered)
       if (typeof onLeftDoubleClick === "function") {
         onLeftDoubleClick();
       }
@@ -407,10 +441,12 @@ export const useScopeCanvas = (
         : lastRenderedTimestamp.current;
 
       // --- Trigger Logic ---
+      const activeTrigger = getActiveTrigger(task);
       let triggerFoundT = null;
       let triggerMode = null;
       let triggerLevel = null;
-      if (task.config?.trigger && buffersToUse) {
+      xAnchorFraction.current = 0;
+      if (activeTrigger && buffersToUse) {
         if (uiSettings.isPaused) {
           // While paused, use the trigger info captured at pause time
           if (pausedTriggerInfo.current) {
@@ -419,10 +455,11 @@ export const useScopeCanvas = (
             triggerLevel = pausedTriggerInfo.current.triggerLevel;
             if (triggerFoundT !== null) {
               timestampToUse = triggerFoundT + 0.5 * viewport.current.x_duration;
+              xAnchorFraction.current = 0.5;
             }
           }
         } else {
-        const trig = task.config.trigger;
+        const trig = activeTrigger;
         const triggerCh = sources.find(s => s.id === trig.channelId) || sources[0];
         if (triggerCh) {
           const triggerBuf = buffersToUse.get(triggerCh.id) || buffersToUse.get(triggerCh.originalId);
@@ -469,6 +506,7 @@ export const useScopeCanvas = (
             if (triggerFoundT !== null) {
                 // Always display trigger at 50% of the scope window; panning via x_offset shifts the view
                 timestampToUse = triggerFoundT + 0.5 * viewport.current.x_duration;
+                xAnchorFraction.current = 0.5;
             }
           }
         }
@@ -603,11 +641,43 @@ export const useScopeCanvas = (
           triggerPixelPos.current = null;
       }
 
+      // --- Draw inactive per-channel triggers as static level markers ---
+      // Only the active trigger aligns the time axis; the rest are shown as
+      // horizontal level lines (tinted with their channel color) so multiple
+      // per-channel triggers stay visible without fighting over the X axis.
+      const allTriggers = getTriggers(task);
+      if (allTriggers.length > 1) {
+        const activeId = activeTrigger?.id;
+        allTriggers.forEach((trg) => {
+          if (trg.id === activeId) return;
+          const lvl = trg.level ?? 0;
+          const y = H * (1 - (lvl - yMin) / yRange);
+          if (y < 0 || y > H) return;
+          const ch = sources.find(s => s.id === trg.channelId);
+          const color = ch?.color || 'rgba(148, 163, 184, 0.5)';
+          ctx.save();
+          ctx.globalAlpha = 0.5;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1;
+          ctx.setLineDash([2, 4]);
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(W, y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          const drawSymbol = TRIGGER_SYMBOLS[trg.mode];
+          if (drawSymbol) drawSymbol(ctx, 20, y);
+          ctx.restore();
+        });
+      }
+
       // --- Draw traces ---
       const renderedEntries = [];
       if (buffersToUse) {
         const newStats = {};
-        sources.forEach((ch) => {
+        // Paint order = layer order: draw bottom-of-list first so the topmost
+        // channel is painted last and visually covers the others (like a paint program).
+        [...sources].reverse().forEach((ch) => {
           const buf = buffersToUse.get(ch.id) || buffersToUse.get(ch.originalId);
           if (!buf) return;
           const visibleData = buf.slice(viewStartTime, viewEndTime);
@@ -680,24 +750,14 @@ export const useScopeCanvas = (
   }, [canvasRef, sources, streamBuffers, task, uiSettings, setStats, renderTrigger,
       updateUiSetting, rawCaptureAwaiting, setRawCaptureAwaiting, autoscaleOnce, clampDurationOffset, interactionState]);
 
-  // Expose a function that centers the trigger in view (X=0 offset, Y centered on level).
-  // Accepts optional yMin/yMax to use freshly computed values (avoids stale viewport state).
-  const centerTriggerInView = useCallback((newYMin, newYMax) => {
+  // Bring the view back to the live edge (X offset 0), optionally applying a
+  // freshly computed Y range (avoids racing the debounced config round-trip).
+  const resetViewToLiveEdge = useCallback((newYMin, newYMax) => {
     viewport.current.x_offset = 0;
-    const trig = task.config?.trigger;
-    if (trig) {
-      const lvl = trig.level ?? 0;
-      const yLo = newYMin ?? viewport.current.y_min;
-      const yHi = newYMax ?? viewport.current.y_max;
-      const halfRange = (yHi - yLo) / 2;
-      viewport.current.y_min = lvl - halfRange;
-      viewport.current.y_max = lvl + halfRange;
-    } else {
-      if (newYMin != null) viewport.current.y_min = newYMin;
-      if (newYMax != null) viewport.current.y_max = newYMax;
-    }
+    if (newYMin != null) viewport.current.y_min = newYMin;
+    if (newYMax != null) viewport.current.y_max = newYMax;
     setRenderTrigger(c => c + 1);
-  }, [task.config?.trigger]);
+  }, []);
 
-  return { centerTriggerInView };
+  return { resetViewToLiveEdge };
 };

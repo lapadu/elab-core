@@ -13,6 +13,7 @@ export function mapProviderTaskToAvailableDevice(provider, task) {
     providerId: provider.id,
     color: task.color || COLOR_PALETTE[colorIndex],
     config: task.config || {},
+    decimals: task.decimals,
     virtual: task.virtual ?? (provider.category === 'VIRTUAL_INTERNAL' || provider.category === 'VIRTUAL_SCRIPT'),
     category: provider.category || 'HARDWARE',
     tags: task.tags || [],

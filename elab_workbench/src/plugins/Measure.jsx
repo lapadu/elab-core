@@ -1,154 +1,51 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Icons, COLOR_PALETTE } from "../utils/Shared";
+import React, { useState, useCallback } from "react";
+import { Icons, preventFocusOnMouseDown } from "../utils/Shared";
+import { useChannelSources } from "./core/hooks/useChannelSources";
+import { useTriggerModel } from "./core/hooks/useTriggerModel";
+import ChannelToolbar from "./core/templates/ChannelToolbar";
+import { applyDroppedTrigger } from "./core/utils/configUtils";
+import { MetricWidget } from "./core/templates/MetricWidget";
 
 // ==========================================
-// 1. SUBCOMPONENT: single live-data channel.
-// ==========================================
-const ChannelDisplay = ({ source, streamBuffers, showUncertainty, pausedSample = null }) => {
-  // Recorded tasks must not fall back to live data via originalId.
-  const buffer = source.is_recorded
-    ? streamBuffers?.get(source.id)
-    : (streamBuffers?.get(source.id) || streamBuffers?.get(source.originalId));
-  const liveRawValue = buffer?.getLatest?.();
-  const latestPoint = buffer?.last?.();
-  const liveUncertainty = latestPoint?.u || buffer?.getLatestUncertainty?.() || null;
-  const rawValue = pausedSample?.value ?? liveRawValue;
-  const uncertainty = pausedSample?.uncertainty ?? liveUncertainty;
-
-  const config = source.config || {};
-  const factor = config.factor !== undefined ? config.factor : 1.0;
-
-  // Format the displayed value.
-  const displayValue =
-    rawValue !== null && rawValue !== undefined
-      ? (rawValue * factor).toFixed(2)
-      : "---";
-
-  const uncertaintyDelta = (() => {
-    if (!showUncertainty || rawValue === null || rawValue === undefined || !uncertainty) return null;
-    const systematic = Number(uncertainty.systematicAbs);
-    const randomSigma = Number(uncertainty.randomSigma);
-    const confidenceK = Number(uncertainty.confidenceK);
-    const k = Number.isFinite(confidenceK) ? Math.abs(confidenceK) : 2;
-    const delta =
-      (Number.isFinite(systematic) ? Math.abs(systematic) : 0) +
-      (Number.isFinite(randomSigma) ? Math.abs(randomSigma) * k : 0);
-    if (!Number.isFinite(delta) || delta <= 0) return null;
-    return delta * factor;
-  })();
-
-  const unit = source.unit || config.unit || "";
-  const intervalText = (() => {
-    if (!showUncertainty || uncertaintyDelta === null || rawValue === null || rawValue === undefined) return null;
-    const center = rawValue * factor;
-    const high = center + uncertaintyDelta;
-    const low = center - uncertaintyDelta;
-    return `${center.toFixed(3)} [+${high.toFixed(3)} -${low.toFixed(3)}]`;
-  })();
-
-  return (
-    <div className="flex flex-col items-center justify-center p-3 border-b border-slate-800/50 last:border-0 w-full">
-      <div className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1 flex items-center gap-2">
-        <div
-          className="w-2 h-2 rounded-full"
-          style={{ backgroundColor: source.color }}
-        ></div>
-        {source.name}
-      </div>
-      <div
-        className="text-4xl font-mono font-bold drop-shadow-lg"
-        style={{ color: source.color }}
-      >
-        {displayValue}
-        <span className="text-lg text-slate-600 ml-1">{unit}</span>
-      </div>
-      {showUncertainty && uncertaintyDelta !== null && rawValue !== null && rawValue !== undefined && (
-        <>
-          <div className="mt-1 text-[11px] text-slate-400 font-mono">
-            ±{uncertaintyDelta.toFixed(3)} {unit}
-          </div>
-          {intervalText && (
-            <div className="mt-0.5 text-[10px] text-slate-500 font-mono">
-              {intervalText} {unit}
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-};
-
-import GenericPluginWidget from "../components/GenericPluginWidget";
-
-import { useTask } from "../hooks/useTask";
-
-// ==========================================
-// 2. MAIN WIDGET: measure multi-channel.
+// MAIN WIDGET: measure multi-channel.
+// Reuses MetricWidget (tpl_metric) for the actual value display (unit,
+// SI-prefix range, decimals) and only adds channel/trigger management
+// (ChannelToolbar) and drag'n'drop on top.
 // ==========================================
 const MeasureWidget = ({ task, isConfigMode, onUpdateTask, streamBuffers }) => {
-  const { updateMeta } = useTask(task, onUpdateTask);
-  const showUncertainty = task.config?.showUncertainty ?? false;
+  const [channelMenuOpen, setChannelMenuOpen] = useState(false);
+  const [triggerMenuOpen, setTriggerMenuOpen] = useState(false);
+  const [rawCaptureAwaiting, setRawCaptureAwaiting] = useState(false);
+
   const isPaused = task.config?.isPaused ?? false;
-  const [pausedSnapshot, setPausedSnapshot] = useState({});
+  const showUncertainty = task.config?.showUncertainty ?? false;
 
-  const getSourceReading = (source) => {
-    const buffer = source?.is_recorded
-      ? streamBuffers?.get(source.id)
-      : (streamBuffers?.get(source.id) || streamBuffers?.get(source.originalId));
-    const value = buffer?.getLatest?.();
-    const point = buffer?.last?.();
-    const uncertainty = point?.u || buffer?.getLatestUncertainty?.() || null;
-    return { value, uncertainty };
-  };
+  const toggleConfigFlag = useCallback((key, value) => {
+    onUpdateTask({ ...task, config: { ...(task.config || {}), [key]: value } });
+  }, [task, onUpdateTask]);
 
-  const toggleUncertainty = () => {
-    onUpdateTask({
-      ...task,
-      config: { ...(task.config || {}), showUncertainty: !showUncertainty },
+  const { sources, addSource, removeSource, updateSourceMeta, reorderSources, handleAction: channelAction } =
+    useChannelSources(task, onUpdateTask);
+
+  const {
+    triggers, activeTrigger, moveTriggerToChannel,
+    activateTrigger, deleteTrigger, addTriggerForChannel,
+  } = useTriggerModel(task, onUpdateTask);
+
+  const handleAction = useCallback((source, actionId) => {
+    channelAction(source, actionId, (src, id) => {
+      // Special handling for RAW capture: clear the buffer and await data.
+      if (id !== 'START_RAW') return;
+      const sourceId = src.originalId || src.id;
+      const buf = streamBuffers?.get(sourceId);
+      if (buf) buf.clear();
+      setRawCaptureAwaiting(true);
+      // One-shot hardware capture; drop the "awaiting" indicator after a
+      // grace period instead of polling the buffer for freshness.
+      setTimeout(() => setRawCaptureAwaiting(false), 15000);
     });
-  };
+  }, [channelAction, streamBuffers]);
 
-  const togglePause = () => {
-    const nextPaused = !isPaused;
-    if (nextPaused) {
-      const snapshot = {};
-      sources.forEach((s) => {
-        snapshot[s.id] = getSourceReading(s);
-      });
-      setPausedSnapshot(snapshot);
-    } else {
-      setPausedSnapshot({});
-    }
-    onUpdateTask({
-      ...task,
-      config: { ...(task.config || {}), isPaused: nextPaused },
-    });
-  };
-  
-  // Drive re-renders from the browser render loop.
-  const requestRef = useRef();
-  const [, setTick] = useState(0);
-
-  useEffect(() => {
-    // Sync updates with the browser render cycle.
-    const update = () => {
-      setTick(t => t + 1);
-      requestRef.current = requestAnimationFrame(update);
-    };
-    
-    // Start the loop.
-    requestRef.current = requestAnimationFrame(update);
-    
-    // Clean up on unmount.
-    return () => cancelAnimationFrame(requestRef.current);
-  }, []);
-
-  // Combine the primary source and all extra channels.
-  const sources = [];
-  if (task.inputs?.source) sources.push(task.inputs.source);
-  if (task.extraChannels) sources.push(...task.extraChannels);
-
-  // --- DRAG AND DROP FOR EMPTY WIDGETS ---
   const handleDragOver = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -164,96 +61,17 @@ const MeasureWidget = ({ task, isConfigMode, onUpdateTask, streamBuffers }) => {
       const droppedTask = JSON.parse(dataStr);
       if (droppedTask.id === task.id) return;
 
-      // Use the first dropped task as the primary source.
-      if (!task.inputs?.source) {
-        onUpdateTask({ ...task, inputs: { source: droppedTask } });
-      } else {
-        // Otherwise append it as an extra channel.
-        const extra = task.extraChannels || [];
-        if (!extra.find((c) => c.id === droppedTask.id)) {
-          onUpdateTask({ ...task, extraChannels: [...extra, droppedTask] });
-        }
+      if (droppedTask.type === 'TRIGGER') {
+        onUpdateTask(applyDroppedTrigger(task, droppedTask));
+        return;
       }
+
+      addSource(droppedTask);
     } catch (error) {
       console.error("Error handling drop in Measure:", error);
     }
   };
 
-  // --- REMOVE CHANNEL ---
-  const removeSource = (sourceId) => {
-    const newTask = { ...task };
-    if (task.inputs?.source?.id === sourceId) {
-      newTask.inputs = { ...newTask.inputs, source: null };
-    } else {
-      newTask.extraChannels = (newTask.extraChannels || []).filter(
-        (c) => c.id !== sourceId,
-      );
-    }
-    onUpdateTask(newTask);
-  };
-
-  const configContent = (
-    <div className="space-y-3">
-      <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
-        <label className="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
-          <span className="font-bold uppercase tracking-wider">Fehlerbereich anzeigen</span>
-          <input
-            type="checkbox"
-            checked={showUncertainty}
-            onChange={(e) => onUpdateTask({
-              ...task,
-              config: { ...(task.config || {}), showUncertainty: e.target.checked },
-            })}
-            className="accent-cyan-500"
-          />
-        </label>
-        <p className="text-[10px] text-slate-500 mt-2">Nutzt uncertainty aus dem Datenstrom, wenn vorhanden.</p>
-      </div>
-
-      {sources.map((s) => (
-        <div
-          key={s.id}
-          className="bg-slate-950 p-3 rounded-lg border border-slate-800"
-        >
-          {/* Name input and remove button */}
-          <div className="flex justify-between items-center mb-3">
-            <input
-              type="text"
-              value={s.name}
-              onChange={(e) =>
-                updateMeta(s.id, "name", e.target.value)
-              }
-              className="bg-slate-900 text-xs font-bold text-slate-300 px-2 py-1 rounded border border-slate-700 w-2/3 focus:outline-none focus:border-blue-500"
-            />
-            <button
-              onClick={() => removeSource(s.id)}
-              className="text-slate-500 hover:text-red-400 hover:bg-red-900/30 p-1.5 rounded transition-colors"
-              title="Remove Channel"
-            >
-              <Icons.Trash2 size={14} />
-            </button>
-          </div>
-
-          {/* Color Picker für diesen spezifischen Kanal */}
-          <div className="flex gap-1.5 flex-wrap">
-            {COLOR_PALETTE.map((color) => (
-              <button
-                key={color}
-                onClick={() => updateMeta(s.id, "color", color)}
-                className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${s.color === color ? "border-white scale-110 shadow-lg" : "border-transparent"}`}
-                style={{ backgroundColor: color }}
-                title={`Set color ${color}`}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-  
-  // ==========================================
-  // RENDER: VORDERSEITE (Leer)
-  // ==========================================
   if (sources.length === 0) {
     return (
       <div
@@ -274,44 +92,68 @@ const MeasureWidget = ({ task, isConfigMode, onUpdateTask, streamBuffers }) => {
     );
   }
 
+  // Config mode reuses MetricWidget's own settings (color, per-channel SI range).
+  if (isConfigMode) {
+    return <MetricWidget task={task} isConfigMode onUpdateTask={onUpdateTask} streamBuffers={streamBuffers} />;
+  }
+
   return (
-    <GenericPluginWidget task={task} isConfigMode={isConfigMode} onUpdateTask={onUpdateTask} configContent={configContent}>
-      <div
-        className="h-full flex flex-col items-center justify-start p-2 pt-9 bg-slate-900 overflow-y-auto custom-scrollbar relative"
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-      >
-        <div className="absolute top-2 right-2 flex items-center gap-2">
-          <button
-            onClick={togglePause}
-            className={`p-1.5 rounded-full border transition-all ${isPaused
-              ? "text-amber-200 bg-amber-900/40 border-amber-500/60"
-              : "text-slate-300 bg-slate-900/70 border-slate-700/70 hover:bg-slate-800 hover:text-white"}`}
-            title="Pause Anzeige"
-          >
-            {isPaused ? <Icons.Play size={14} /> : <Icons.Pause size={14} />}
-          </button>
-          <button
-            onClick={toggleUncertainty}
-            className={`p-1.5 rounded-full border transition-all ${showUncertainty
+    <div
+      className="h-full relative bg-slate-900 text-slate-200"
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      <ChannelToolbar
+        sources={sources}
+        onRemoveSource={removeSource}
+        onColorChange={(sourceId, color) => updateSourceMeta(sourceId, "color", color)}
+        onAction={handleAction}
+        onReorder={reorderSources}
+        rawCaptureAwaiting={rawCaptureAwaiting}
+        channelMenuOpen={channelMenuOpen}
+        onToggleChannelMenu={() => { setChannelMenuOpen(prev => !prev); setTriggerMenuOpen(false); }}
+        onCloseChannelMenu={() => setChannelMenuOpen(false)}
+        triggers={triggers}
+        activeTrigger={activeTrigger}
+        triggerMenuOpen={triggerMenuOpen}
+        onToggleTriggerMenu={() => { setTriggerMenuOpen(prev => !prev); setChannelMenuOpen(false); }}
+        onCloseTriggerMenu={() => setTriggerMenuOpen(false)}
+        onActivateTrigger={activateTrigger}
+        onMoveTrigger={moveTriggerToChannel}
+        onRemoveTrigger={deleteTrigger}
+        onAddTriggerForChannel={addTriggerForChannel}
+      />
+      <div className="absolute top-2 right-2 z-40 flex items-center gap-2">
+        <button
+          onMouseDown={preventFocusOnMouseDown}
+          onClick={() => toggleConfigFlag('isPaused', !isPaused)}
+          className={`p-1.5 rounded-full border transition-all ${isPaused
+            ? "text-amber-200 bg-amber-900/40 border-amber-500/60"
+            : "text-slate-300 bg-slate-900/70 border-slate-700/70 hover:bg-slate-800 hover:text-white"}`}
+          title="Pause Anzeige"
+        >
+          {isPaused ? <Icons.Play size={14} /> : <Icons.Pause size={14} />}
+        </button>
+        <button
+          onMouseDown={preventFocusOnMouseDown}
+          onClick={() => toggleConfigFlag('showUncertainty', !showUncertainty)}
+          className={`p-1.5 rounded-full border transition-all ${showUncertainty
             ? "text-cyan-200 bg-cyan-900/40 border-cyan-500/60"
             : "text-slate-300 bg-slate-900/70 border-slate-700/70 hover:bg-slate-800 hover:text-white"}`}
-            title="Fehlerbereich ein/aus"
-          >
-            <Icons.Sigma size={14} />
-          </button>
-        </div>
-        {sources.map((s) => (
-          <ChannelDisplay
-            key={s.id}
-            source={s}
-            streamBuffers={streamBuffers}
-            showUncertainty={showUncertainty}
-            pausedSample={isPaused ? pausedSnapshot[s.id] : null}
-          />
-        ))}
+          title="Fehlerbereich ein/aus"
+        >
+          <Icons.Sigma size={14} />
+        </button>
       </div>
-    </GenericPluginWidget>
+      <MetricWidget
+        task={task}
+        isConfigMode={false}
+        onUpdateTask={onUpdateTask}
+        streamBuffers={streamBuffers}
+        isPaused={isPaused}
+        showUncertainty={showUncertainty}
+      />
+    </div>
   );
 };
 
@@ -332,10 +174,13 @@ export const MeasurePlugin = new PluginBuilder("system_measure_v1", "Measure Dis
         inputs: { source: null },
         extraChannels: [],
         config: {
-          showUncertainty: false,
           isPaused: false,
+          showUncertainty: false,
         },
-        ui: { mode: "generic", template: "tpl_metric" },
+        ui: {
+          mode: "generic",
+          defaultTemplate: "system_measure_v1",
+        },
     }))
     .build();
 

@@ -43,12 +43,10 @@ from elab_server.manifest_builder import ManifestBuilder
 sio = socketio.Client()
 
 builder = ManifestBuilder(provider_id="my-temp-sensor", name="Bench Temperature")
-builder.add_capability("read")
 builder.add_task(
     task_id="temp",
     name="Temperature",
     task_type="SENSOR",
-    plugin_id="generic_sensor_v1",
     ui_mode="generic",
     config={"unit": "°C", "min": -20, "max": 120},
 )
@@ -89,6 +87,20 @@ builder.add_task(
 
 The dispatcher rejects unknown decoder names at registration time
 (see `_validate_decoder` in `manifest_builder.py`).
+
+### 2.2 Enabling Trigger Support
+
+If a task supports triggers (allowing users to set thresholds, modes like rising/falling edge, and channels on both desktop and mobile devices), it can declare support in the manifest. 
+
+A task supports triggers if:
+- It uses the standard time-domain scope template: `ui.defaultTemplate = "tpl_scope"` or `ui.template = "tpl_scope"`.
+- OR it declares `"trigger"` in its task `capabilities` array (e.g., `capabilities=["measure", "trigger"]`).
+- OR its config explicitly pre-defines a `trigger` configuration block (e.g., `config={"trigger": {"mode": "rising", "level": 0.0, "channelId": None}}`).
+
+Once support is detected, the workbench automatically enables:
+1. Drag-and-drop or touch-drag placement of trigger tasks onto the widget.
+2. The trigger control panel in the workbench widget.
+3. Click-to-assign / tap-to-assign channel shortcuts inside the trigger menu (especially useful on mobile/touch screens where drag-and-drop is not available).
 
 ## 3. Custom UI plugin (JavaScript)
 
@@ -169,7 +181,7 @@ class MyDecoder(BaseDecoder):
 ```
 
 Then reference it in the client's task manifest with
-`decoder={"type": "my_protocol", "config": {...}}`.
+`decoder={"type": "my_protocol", "parameters": {...}}`.
 
 Decoders **must not raise** on malformed input. Return `[]` and log a
 warning instead. Tests live in `tests/test_decoders.py`.

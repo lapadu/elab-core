@@ -7,6 +7,7 @@ import os
 import sqlite3
 import logging
 import threading
+import time
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,15 @@ class ConfigStore:
                     updated_at REAL
                 )
             """)
+
+            # Migrate task_config to add decimals column if missing
+            try:
+                conn.execute("ALTER TABLE task_config ADD COLUMN decimals INTEGER;")
+                logger.info("Migrated task_config: added decimals column.")
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
+
             # Provider credentials for HMAC-based authentication.
             # status: 'pending' | 'approved' | 'revoked'
             # manifest_hash: SHA-256 hex digest of canonicalized manifest at approval time
@@ -87,10 +97,10 @@ class ConfigStore:
         return conn
 
     def get_task_config(self, task_id: str) -> Dict[str, Any]:
-        """Return stored overrides for a task (alias, color). Empty dict if none."""
+        """Return stored overrides for a task (alias, color, decimals). Empty dict if none."""
         with self._lock:
             cursor = self._require_conn().execute(
-                "SELECT alias, color FROM task_config WHERE task_id = ?",
+                "SELECT alias, color, decimals FROM task_config WHERE task_id = ?",
                 (task_id,),
             )
             row = cursor.fetchone()
@@ -101,11 +111,12 @@ class ConfigStore:
             result["alias"] = row[0]
         if row[1] is not None:
             result["color"] = row[1]
+        if row[2] is not None:
+            result["decimals"] = row[2]
         return result
 
     def set_task_alias(self, task_id: str, alias: Optional[str]) -> None:
         """Store or clear the alias for a task."""
-        import time
         with self._lock:
             conn = self._require_conn()
             conn.execute(
@@ -119,7 +130,6 @@ class ConfigStore:
 
     def set_task_color(self, task_id: str, color: Optional[str]) -> None:
         """Store or clear the color override for a task."""
-        import time
         with self._lock:
             conn = self._require_conn()
             conn.execute(
@@ -131,20 +141,35 @@ class ConfigStore:
             conn.commit()
         logger.debug("ConfigStore: color for %s set to %r", task_id, color)
 
+    def set_task_decimals(self, task_id: str, decimals: Optional[int]) -> None:
+        """Store or clear the decimals override for a task."""
+        with self._lock:
+            conn = self._require_conn()
+            conn.execute(
+                """INSERT INTO task_config (task_id, decimals, updated_at)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(task_id) DO UPDATE SET decimals = excluded.decimals, updated_at = excluded.updated_at""",
+                (task_id, decimals, time.time()),
+            )
+            conn.commit()
+        logger.debug("ConfigStore: decimals for %s set to %r", task_id, decimals)
+
     def get_all_configs(self) -> Dict[str, Dict[str, Any]]:
-        """Return all stored task configs as {task_id: {alias, color}}."""
+        """Return all stored task configs as {task_id: {alias, color, decimals}}."""
         with self._lock:
             cursor = self._require_conn().execute(
-                "SELECT task_id, alias, color FROM task_config"
+                "SELECT task_id, alias, color, decimals FROM task_config"
             )
             rows = cursor.fetchall()
         result: Dict[str, Dict[str, Any]] = {}
-        for task_id, alias, color in rows:
+        for task_id, alias, color, decimals in rows:
             entry: Dict[str, Any] = {}
             if alias is not None:
                 entry["alias"] = alias
             if color is not None:
                 entry["color"] = color
+            if decimals is not None:
+                entry["decimals"] = decimals
             if entry:
                 result[task_id] = entry
         return result
@@ -197,7 +222,6 @@ class ConfigStore:
         and returns the existing row. If the manifest_hash differs, the device is
         forced back to pending and must be re-approved.
         """
-        import time
         now = time.time()
         with self._lock:
             conn = self._require_conn()
@@ -222,7 +246,7 @@ class ConfigStore:
                         (now, client_ip, device_id),
                     )
                 else:
-                    # manifest changed or was revoked → reset to pending, new secret
+                    # manifest changed or was revoked â†’ reset to pending, new secret
                     conn.execute(
                         """UPDATE provider_credentials
                               SET secret_hex = ?, manifest_hash = ?, status = 'pending',
@@ -238,7 +262,6 @@ class ConfigStore:
 
     def approve_credential(self, device_id: str, manifest_hash: str) -> bool:
         """Mark a pending credential as approved. Returns False if not found."""
-        import time
         with self._lock:
             conn = self._require_conn()
             cursor = conn.execute(
@@ -317,4 +340,3 @@ class ConfigStore:
             }
             for r in rows
         ]
-

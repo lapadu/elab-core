@@ -1061,3 +1061,29 @@ class TestSourceActuatorRouting:
 
         source.disconnect()
         actuator.disconnect()
+
+    def test_drop_actuator_routes_clears_route_state(self):
+        """Disconnect cleanup must purge route timestamps and buffers by id."""
+        from elab_server.socket_handlers import provider_handlers
+
+        provider_handlers._actuator_route_ts.clear()
+        provider_handlers._actuator_route_buffers.clear()
+
+        provider_handlers._actuator_route_ts[("src_a", "act_x")] = 1.0
+        provider_handlers._actuator_route_ts[("src_b", "act_x")] = 2.0
+        provider_handlers._actuator_route_ts[("src_c", "act_y")] = 3.0
+        provider_handlers._actuator_route_buffers[("src_a", "act_x")] = {"values": []}
+        provider_handlers._actuator_route_buffers[("src_c", "act_y")] = {"values": []}
+
+        # act_x is the disconnecting actuator; src_a is a disconnecting source.
+        provider_handlers._drop_actuator_routes_for(["act_x", "src_a"])
+
+        assert ("src_a", "act_x") not in provider_handlers._actuator_route_ts
+        assert ("src_b", "act_x") not in provider_handlers._actuator_route_ts
+        assert ("src_c", "act_y") in provider_handlers._actuator_route_ts
+        assert ("src_a", "act_x") not in provider_handlers._actuator_route_buffers
+        assert ("src_c", "act_y") in provider_handlers._actuator_route_buffers
+
+        provider_handlers._actuator_route_ts.clear()
+        provider_handlers._actuator_route_buffers.clear()
+

@@ -84,7 +84,7 @@ graph TD
 
 1. **Hardware Clients (Python)**
 
-    - **Smart Device (e.g., Frequency Counter):** It is more than just a sensor. It starts its own small web server (`run_web_server` in `FrequenceCounterClient.py`) that serves a JavaScript file (`assets/freq_counter_plugin.js`). In the manifest it sends to the server, the address of this script is specified under `ui.url`.
+    - **Smart Device (e.g., Frequency Counter):** It is more than just a sensor. It starts its own small Flask web server (see `run_dispatcher_mode` / `run_standalone_mode` in `FrequenceCounterClient.py`) that serves a JavaScript file (`assets/freq_counter_plugin.js`). In the manifest it sends to the server, the address of this script is specified under `ui.url`.
 
     - **Standard Sensor (e.g., TempSensor):** Uses standard templates (e.g., `tpl_metric`) that are already built into the frontend. It does not need to host its own code.
 
@@ -97,3 +97,71 @@ graph TD
     - **Internal Plugins:** Are permanently integrated during compilation (`npm run build`). `PluginRegistry.jsx` collects all files from the `plugins/` folder.
 
     - **External Plugins (Remote Injection):** The `RemoteWidgetLoader` detects that a device is using `custom` mode. It dynamically creates an HTML `<script>` tag with the URL of the hardware client. The loaded script executes `window.registerElabPlugin` and passes its React code to the frontend.
+
+## Time Model
+
+E-Lab separates the **time anchor** from the **time resolution** of a signal.
+The Dispatcher is the authority for the anchor, not for the resolution:
+
+- The Dispatcher maps every incoming source onto its server wall clock so
+    streams from different providers share one reference time.
+- A provider that sends absolute Unix epoch milliseconds keeps its timestamps.
+- A provider that sends a device-local clock, such as `millis()`, receives a
+    stable per-source offset. The Dispatcher shifts the timestamps, but does not
+    resample, round, or regenerate them.
+- `startTime`, `endTime`, and `timestamps[]` therefore retain the source's
+    internal sample spacing and chunk duration. Network delivery time is not
+    substituted for the measurement time.
+
+The resulting live path is:
+
+```text
+device timestamp -> dispatcher source offset -> server-wall-clock data_stream
+```
+
+The offset is cached per source and corrected only when the source drifts
+significantly. This gives the UI a common time axis while preserving the
+highest time detail the source supplied. It does not guarantee perfect
+cross-device synchronization: device clock quality, network delay, and the
+server anchoring method define the alignment limit. The recorded quality is
+stored in `session_sources.time_source` as `device` or `server`.
+
+## Recording and Replay Time
+
+Recordings are stored in `session.sqlite` with absolute epoch timestamps. They
+are independent of the time at which they are later opened. The replay cursor,
+slider, seek position, and duration use a separate session-relative axis:
+
+```text
+session time:     0 ms ------------------------------> duration
+wall-clock replay:      recording is presented as if it happened now
+```
+
+During playback, the current replay position is shifted onto the current
+server wall clock. The relative distances between samples remain unchanged,
+so a replayed sensor behaves like a source producing data now. This allows a
+recording to be displayed beside a live virtual source such as the Sinus
+Generator. Recorded and live sources still use separate source IDs and buffers;
+the common wall-clock axis is what makes intentional mixing possible without
+accidentally merging the streams.
+
+Session metadata in `session_meta` stores the schema version, origin, creation
+time, and authoritative session start/end. Older sessions without this table
+fall back to the minimum and maximum event timestamps. `session_sources`
+stores the time quality of each recorded source. See [API Time Semantics](api.md#time-semantics) and [Session File Layout](classes.md#session-file-layout-sessionsqlite).
+
+### Composition of Multiple Recordings
+
+Future multi-session editing should follow a video-editor model:
+
+1. Place source tracks from different sessions on one project-relative
+     timeline.
+2. Apply offsets to the tracks in the editor to align them.
+3. Save or export the aligned result as a new composed session with one
+     authoritative time axis.
+
+Track offsets belong to this edit state, not to the live/replay wall-clock
+     conversion. Once exported, the composed session should replay through the
+     normal single-session path. Sources imported from different sessions need
+     collision-free IDs, especially when the same physical sensor appears more
+     than once.

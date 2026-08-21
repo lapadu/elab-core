@@ -69,8 +69,7 @@ coverage.xml
 
 # Ignore all session files
 sessions
-elab_clients_core/freq_counter_overrides.json
-elab_clients_core/temp_test_client_overrides.json
+*_overrides.json
 
 # Coverage
 test-results

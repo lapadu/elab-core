@@ -15,6 +15,9 @@ const PulseGenWidget = ({ task, isConfigMode, onUpdateTask }) => {
 
   const frequency = task.config?.frequency || 2;
   const amplitude = task.config?.amplitude || 5;
+  const dcOffset = task.config?.dcOffset ?? 0;
+  const phaseOffset = task.config?.phaseOffset ?? 0;
+  const dutyCycle = task.config?.dutyCycle ?? 50;
 
   return (
     <GenericPluginWidget task={task} isConfigMode={isConfigMode} onUpdateTask={onUpdateTask}>
@@ -46,6 +49,39 @@ const PulseGenWidget = ({ task, isConfigMode, onUpdateTask }) => {
             step="0.1"
             onChange={(e) => updateConfig("amplitude", Number(e.target.value))}
             unit="V"
+            colorClass="accent-blue-500"
+            textColorClass="text-blue-400"
+          />
+          <SliderControl
+            label="DC Offset"
+            value={dcOffset}
+            min="-10"
+            max="10"
+            step="0.1"
+            onChange={(e) => updateConfig("dcOffset", Number(e.target.value))}
+            unit="V"
+            colorClass="accent-blue-500"
+            textColorClass="text-blue-400"
+          />
+          <SliderControl
+            label="Phase"
+            value={phaseOffset}
+            min="0"
+            max="360"
+            step="1"
+            onChange={(e) => updateConfig("phaseOffset", Number(e.target.value))}
+            unit="°"
+            colorClass="accent-blue-500"
+            textColorClass="text-blue-400"
+          />
+          <SliderControl
+            label="Duty Cycle"
+            value={dutyCycle}
+            min="0"
+            max="100"
+            step="1"
+            onChange={(e) => updateConfig("dutyCycle", Number(e.target.value))}
+            unit="%"
             colorClass="accent-blue-500"
             textColorClass="text-blue-400"
           />
@@ -102,6 +138,9 @@ export const SquareWavePlugin = new PluginBuilder("system_square_v1", "Virtual P
           const intervalId = setInterval(() => {
             const freq = Number(currentConfig.frequency) || 2;
             const amp = Number(currentConfig.amplitude) || 5;
+            const dcOffset = Number(currentConfig.dcOffset) || 0;
+            const phaseNorm = ((Number(currentConfig.phaseOffset) || 0) / 360) % 1;
+            const duty = Math.min(1, Math.max(0, (currentConfig.dutyCycle ?? 50) / 100));
 
             // Emit exactly as many samples as fit into the elapsed wall time,
             // so the signal clock advances at 1x real time.
@@ -119,8 +158,8 @@ export const SquareWavePlugin = new PluginBuilder("system_square_v1", "Virtual P
             const phaseInc = freq * (SAMPLE_PERIOD_MS / 1000);
             const values = [];
             for (let i = 0; i < count; i++) {
-              // 50% duty cycle: high for the first half of the period.
-              values.push(phase < 0.5 ? amp : 0);
+              const effectivePhase = (phase + phaseNorm) % 1;
+              values.push(effectivePhase < duty ? amp + dcOffset : dcOffset);
               phase += phaseInc;
               if (phase >= 1) phase -= Math.floor(phase);
             }
@@ -164,6 +203,9 @@ export const SquareWavePlugin = new PluginBuilder("system_square_v1", "Virtual P
         config: {
           frequency: 2,
           amplitude: 5,
+          dcOffset: 0,
+          phaseOffset: 0,
+          dutyCycle: 50,
           range: [0, 5],
           unit: "V",
           factor: 1.0,

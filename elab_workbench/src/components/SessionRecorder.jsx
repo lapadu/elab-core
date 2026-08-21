@@ -86,10 +86,10 @@ export function SessionRecorder({
       {/* CENTER: Replay Controls & Progress Bar */}
       <div className={`flex-1 flex items-center gap-3 px-4 transition-opacity ${isReplayMode ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
         <div className="flex items-center gap-1">
-          <button onClick={() => handleReplayControl(replayState.state === 'playing' ? 'pause' : 'play')} className="p-2 bg-slate-800 text-white rounded-full hover:bg-slate-700 border border-slate-600 shadow-sm disabled:opacity-50" disabled={replayState.state === 'stopped'}>
+          <button onClick={() => handleReplayControl(replayState.state === 'playing' ? 'pause' : 'play')} className="p-2 bg-slate-800 text-white rounded-full hover:bg-slate-700 border border-slate-600 shadow-sm disabled:opacity-50" disabled={!isSessionLoaded}>
             {replayState.state === 'playing' ? <Icons.Pause size={18} fill="currentColor" /> : <Icons.Play size={18} fill="currentColor" className="ml-0.5" />}
           </button>
-          <button onClick={() => handleReplayControl('stop')} className="p-1.5 text-slate-400 hover:text-red-400 rounded hover:bg-slate-800" title="Stop Replay"><Icons.Square size={16} fill="currentColor" /></button>
+          <button onClick={() => handleReplayControl('stop')} disabled={!isSessionLoaded} className="p-1.5 text-slate-400 hover:text-red-400 rounded hover:bg-slate-800 disabled:opacity-50" title="Stop Replay"><Icons.Square size={16} fill="currentColor" /></button>
         </div>
         <span className="text-xs font-mono text-slate-400 w-16 text-right">{formatTime(seekValue)}</span>
 

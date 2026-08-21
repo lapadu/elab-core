@@ -121,12 +121,16 @@ builder.add_task(
     name="Sinus Generator",
     task_type="GENERATOR",
     group_id="plugin_sine_gen_v1",
-    virtual=True,
+    # Not virtual: this client is the data source. A virtual task would make the
+    # workbench start its own JS sine factory on the same sourceId in parallel.
+    virtual=False,
     color="#3b82f6",
     tags=["Sine", "Test"],
     config={
         "frequency": 10,
         "amplitude": 5.0,
+        "dcOffset": 0.0,
+        "phaseOffset": 0,
         "noiseEnabled": True,
         "range": [-10, 10],
         "unit": "V",
@@ -223,6 +227,10 @@ class SinusTask:
 
                 freq = self.config.get("frequency", 10)
                 amp = self.config.get("amplitude", 5.0)
+                dc_offset = float(self.config.get("dcOffset", 0.0) or 0.0)
+                phase_offset = math.radians(
+                    float(self.config.get("phaseOffset", 0) or 0)
+                )
                 noise_enabled = self.config.get("noiseEnabled", True)
 
                 values = []
@@ -231,14 +239,12 @@ class SinusTask:
                 phase_increment = 2 * math.pi * freq / self.sample_rate
 
                 for i in range(self.chunk_size):
-                    t = loop_start_time + i / self.sample_rate
-
-                    value = amp * math.sin(self.phase)
+                    value = amp * math.sin(self.phase + phase_offset) + dc_offset
                     if noise_enabled:
                         value += (random.random() - 0.5) * 0.1
 
                     values.append(value)
-                    timestamps.append(t * 1000)
+                    timestamps.append((loop_start_time + i / self.sample_rate) * 1000)
                     self.phase += phase_increment
 
                 if self.phase > 2 * math.pi:
@@ -257,8 +263,7 @@ class SinusTask:
 
                 chunk_duration = self.chunk_size / self.sample_rate
                 elapsed = time.time() - loop_start_time
-                sleep_time = max(0, chunk_duration - elapsed)
-                time.sleep(sleep_time)
+                time.sleep(max(0, chunk_duration - elapsed))
             else:
                 time.sleep(1)
 

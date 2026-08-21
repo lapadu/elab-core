@@ -281,6 +281,67 @@ class GenericBinaryDecoder(BaseDecoder):
         self._last_scaled_value = last_scaled
         return out
 
+    def _delinearize(self, val: float) -> float:
+        """Reverse of _linearize."""
+        if not self._has_lin_table:
+            return val
+
+        # Find segment where val is between lin_y[i] and lin_y[i+1]
+        for i in range(len(self.lin_x) - 1):
+            y0, y1 = self.lin_y[i], self.lin_y[i+1]
+            if min(y0, y1) <= val <= max(y0, y1):
+                if y0 == y1:
+                    return self.lin_x[i]
+                x0, x1 = self.lin_x[i], self.lin_x[i+1]
+                return x0 + (x1 - x0) * ((val - y0) / (y1 - y0))
+
+        # Clamp to bounds
+        if val <= min(self.lin_y):
+            idx = self.lin_y.index(min(self.lin_y))
+            return self.lin_x[idx]
+        if val >= max(self.lin_y):
+            idx = self.lin_y.index(max(self.lin_y))
+            return self.lin_x[idx]
+        return val
+
+    def encode(self, values: List[float]) -> bytes:
+        """Converts float values back to bytes."""
+        if not values:
+            return b""
+
+        zero = self.zero_val
+        scale = self._scale
+
+        raw_values = []
+        for v in values:
+            if self._has_lin_table:
+                v = self._delinearize(v)
+            raw = (v / scale) + zero if scale != 0 else zero
+
+            if self.fmt_char == 'B':
+                raw = max(0, min(255, int(round(raw))))
+            elif self.fmt_char == 'b':
+                raw = max(-128, min(127, int(round(raw))))
+            elif self.fmt_char == 'H':
+                raw = max(0, min(65535, int(round(raw))))
+            elif self.fmt_char == 'h':
+                raw = max(-32768, min(32767, int(round(raw))))
+            elif self.fmt_char == 'I':
+                raw = max(0, min(4294967295, int(round(raw))))
+            elif self.fmt_char == 'i':
+                raw = max(-2147483648, min(2147483647, int(round(raw))))
+            elif self.fmt_char in ('f', 'd'):
+                raw = float(raw)
+
+            raw_values.append(raw)
+
+        fmt = f"{self.endian}{len(raw_values)}{self.fmt_char}"
+        try:
+            return struct.pack(fmt, *raw_values)
+        except struct.error as e:
+            logger.error("struct.pack failed (%s) for fmt=%s", e, fmt)
+            return b""
+
     def map_uncertainty(self, uncertainty: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Map raw-domain uncertainty to decoded-domain uncertainty.
 

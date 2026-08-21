@@ -10,6 +10,9 @@ import pytest
 
 from elab_server import replayer as replayer_mod
 
+# Any plausible "now" is far beyond this; used to assert wall-clock rebasing.
+_MIN_WALL_CLOCK_MS = 1_700_000_000_000
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -187,6 +190,73 @@ class TestControl:
         assert r.command_queue[1] == ('seek', 5000)
 
 
+def _write_session_meta(root, name, entries):
+    """Add a session_meta table with the given key/value entries."""
+    conn = sqlite3.connect(root / name / "session.sqlite")
+    conn.execute("CREATE TABLE IF NOT EXISTS session_meta (key TEXT PRIMARY KEY, value TEXT)")
+    conn.executemany(
+        "INSERT OR REPLACE INTO session_meta (key, value) VALUES (?, ?)",
+        list(entries.items()),
+    )
+    conn.commit()
+    conn.close()
+
+
+class TestSessionMetadata:
+    """session_meta is authoritative; older sessions fall back to the log."""
+
+    def test_meta_bounds_take_precedence(self, session_dir):
+        sid = _make_session(session_dir, "meta", [
+            (1_700_000_000_000, "DATA_STREAM", b"x"),
+            (1_700_000_005_000, "DATA_STREAM", b"y"),
+        ])
+        # A composed session may span more than its logged events.
+        _write_session_meta(session_dir, sid, {
+            'session_start_ms': str(1_700_000_000_000 - 2_000),
+            'session_end_ms': str(1_700_000_005_000 + 3_000),
+        })
+        r = replayer_mod.SessionReplayer(_FakeSocketIO())
+        ok, msg = r.load_session(sid)
+        assert ok, msg
+        assert r.session_start_ms == 1_699_999_998_000
+        assert r.session_duration_ms == 10_000
+
+    def test_falls_back_to_log_without_meta(self, session_dir):
+        sid = _make_session(session_dir, "nometa", [
+            (1_700_000_000_000, "DATA_STREAM", b"x"),
+            (1_700_000_005_000, "DATA_STREAM", b"y"),
+        ])
+        r = replayer_mod.SessionReplayer(_FakeSocketIO())
+        ok, msg = r.load_session(sid)
+        assert ok, msg
+        assert r.session_start_ms == 1_700_000_000_000
+        assert r.session_duration_ms == 5_000
+
+    def test_incomplete_meta_falls_back_to_log(self, session_dir):
+        sid = _make_session(session_dir, "partialmeta", [
+            (1_700_000_000_000, "DATA_STREAM", b"x"),
+            (1_700_000_005_000, "DATA_STREAM", b"y"),
+        ])
+        _write_session_meta(session_dir, sid, {'origin': 'recorded'})
+        r = replayer_mod.SessionReplayer(_FakeSocketIO())
+        ok, msg = r.load_session(sid)
+        assert ok, msg
+        assert r.session_duration_ms == 5_000
+
+    def test_corrupt_meta_is_rejected(self, session_dir):
+        sid = _make_session(session_dir, "badmeta", [
+            (1_700_000_000_000, "DATA_STREAM", b"x"),
+            (1_700_000_005_000, "DATA_STREAM", b"y"),
+        ])
+        _write_session_meta(session_dir, sid, {
+            'session_start_ms': 'not-a-number',
+            'session_end_ms': str(1_700_000_005_000),
+        })
+        r = replayer_mod.SessionReplayer(_FakeSocketIO())
+        ok, _ = r.load_session(sid)
+        assert not ok
+
+
 # ---------------------------------------------------------------------------
 # run() loop – command processing
 # ---------------------------------------------------------------------------
@@ -285,6 +355,77 @@ class TestRunCommands:
         t.join(timeout=2)
 
         assert r.current_replay_ms == 0
+
+    def test_stop_emits_stopped_state(self, session_dir):
+        """Stop must report 'stopped' so the UI can offer play again."""
+        r, sio = self._make_replayer(session_dir)
+        r.control('stop')
+        t = threading.Thread(target=r.run, daemon=True)
+        t.start()
+        time.sleep(0.3)
+        r.running = False
+        t.join(timeout=2)
+
+        states = [d.get('state') for d, _ in sio.get_events('replay_status')]
+        assert 'stopped' in states
+
+    def test_stop_and_seek_emit_replay_reset(self, session_dir):
+        """Every position jump must tell the UI to drop buffered replay data."""
+        r, sio = self._make_replayer(session_dir)
+        r.control('stop')
+        r.control('seek', 2000)
+        t = threading.Thread(target=r.run, daemon=True)
+        t.start()
+        time.sleep(0.3)
+        r.running = False
+        t.join(timeout=2)
+
+        resets = sio.get_events('replay_reset')
+        assert len(resets) >= 2
+        assert resets[0][1].get('room') == 'ui_clients'
+
+    def test_play_at_end_rewinds_to_start(self, session_dir):
+        """Play at the end of a recording restarts instead of doing nothing."""
+        r, sio = self._make_replayer(session_dir)
+        r.current_replay_ms = r.session_duration_ms
+        r.control('play')
+        t = threading.Thread(target=r.run, daemon=True)
+        t.start()
+        time.sleep(0.3)
+        r.control('pause')
+        time.sleep(0.1)
+        r.running = False
+        t.join(timeout=2)
+
+        assert sio.get_events('replay_reset')
+        states = [d.get('state') for d, _ in sio.get_events('replay_status')]
+        assert 'playing' in states
+
+    def test_seek_replays_preroll_window(self, session_dir):
+        """Seeking while paused must deliver the data before the new position."""
+        sio = _FakeSocketIO()
+        payload = json.dumps({
+            "type": "DATA_STREAM",
+            "payload": {"sourceId": "s1", "value": 7},
+        })
+        sid = _make_session(session_dir, "preroll", [
+            (1_700_000_000_000, "DATA_STREAM", payload),
+            (1_700_000_001_000, "DATA_STREAM", payload),
+            (1_700_000_009_000, "DATA_STREAM", payload),
+        ])
+        r = replayer_mod.SessionReplayer(sio)
+        r.load_session(sid)
+        r.control('seek', 2000)
+        t = threading.Thread(target=r.run, daemon=True)
+        t.start()
+        time.sleep(0.3)
+        r.running = False
+        t.join(timeout=2)
+
+        data_events = sio.get_events('data_stream')
+        assert len(data_events) == 2  # the two rows inside [0 ms, 2000 ms)
+        assert all(d['sourceId'] == 'rec_s1' for d, _ in data_events)
+        assert all(d['_is_replay'] is True for d, _ in data_events)
 
     def test_unload_stops_replayer(self, session_dir):
         r, sio = self._make_replayer(session_dir)
@@ -408,8 +549,13 @@ class TestRunDataReplay:
         )
         assert b64_found
 
-    def test_timestamp_normalization(self, session_dir):
-        """startTime, endTime, timestamp should be normalized to session-relative."""
+    def test_timestamps_rebased_onto_wall_clock(self, session_dir):
+        """Replayed samples must look like they are produced right now.
+
+        Recordings are stored with absolute epoch times; playback shifts them
+        onto the current wall clock so a replay can be charted next to live
+        sources, while the relative spacing inside the recording is preserved.
+        """
         sio = _FakeSocketIO()
         ts = 1_700_000_000_500
         payload = json.dumps({
@@ -423,7 +569,7 @@ class TestRunDataReplay:
                 "timestamps": [ts, ts + 50, ts + 100],
             }
         })
-        sid = _make_session(session_dir, "normalize", [
+        sid = _make_session(session_dir, "rebase", [
             (1_700_000_000_000, "DATA_STREAM", payload),
             (1_700_000_000_600, "DATA_STREAM", payload),
         ])
@@ -438,10 +584,13 @@ class TestRunDataReplay:
         r.running = False
         t.join(timeout=2)
 
+        now_ms = time.time() * 1000.0
         data_events = sio.get_events('data_stream')
         assert len(data_events) >= 1
         d = data_events[0][0]
-        # Normalized: relative to session_start_ms, so values should be small
-        assert d.get('startTime', 0) < 10_000
-        assert d.get('endTime', 0) < 10_000
-        assert d.get('timestamp', 0) < 10_000
+        # Close to "now", never the original recording epoch.
+        assert abs(d['timestamp'] - now_ms) < 10_000
+        assert d['timestamp'] > _MIN_WALL_CLOCK_MS
+        # Relative spacing inside the payload is untouched.
+        assert d['endTime'] - d['startTime'] == 100
+        assert [round(x - d['timestamps'][0]) for x in d['timestamps']] == [0, 50, 100]

@@ -40,6 +40,32 @@ describe('zoomXDuration', () => {
         )
         expect(r.x_offset).toBeGreaterThanOrEqual(0)
     })
+
+    // Time under the cursor: anchor + k*duration - offset - (1 - cursor)*duration.
+    const cursorTime = (vp, cursor, anchorFraction, anchorBase = 0) =>
+        anchorBase + anchorFraction * vp.x_duration - vp.x_offset - (1 - cursor) * vp.x_duration
+
+    it.each([0.1, 0.5, 0.9])('keeps the cursor time invariant at a fixed anchor (cursor %s)', (cursor) => {
+        const vp = { x_duration: 1000, x_offset: 0, y_min: 0, y_max: 1 }
+        const before = cursorTime(vp, cursor, 0)
+        const r = zoomXDuration(vp, cursor, 0.5)
+        expect(cursorTime(r, cursor, 0)).toBeCloseTo(before)
+    })
+
+    it.each([0.1, 0.5, 0.9])('keeps the cursor time invariant with a trigger-centred anchor (cursor %s)', (cursor) => {
+        // Trigger-aligned view: anchor = triggerT + 0.5 * duration.
+        const triggerT = 5000
+        const vp = { x_duration: 1000, x_offset: 0, y_min: 0, y_max: 1 }
+        const before = cursorTime(vp, cursor, 0.5, triggerT)
+        const r = zoomXDuration(vp, cursor, 0.5, undefined, 0.5)
+        expect(cursorTime(r, cursor, 0.5, triggerT)).toBeCloseTo(before)
+    })
+
+    it('defaults to a fixed anchor when no fraction is given', () => {
+        const vp = { x_duration: 1000, x_offset: 0, y_min: 0, y_max: 1 }
+        expect(zoomXDuration(vp, 0.25, 0.5).x_offset)
+            .toBeCloseTo(zoomXDuration(vp, 0.25, 0.5, undefined, 0).x_offset)
+    })
 })
 
 describe('zoomXRange', () => {

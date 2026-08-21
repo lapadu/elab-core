@@ -480,6 +480,15 @@ def main():
     """Main entry point."""
     npm_deps = scan_npm()
     python_deps = scan_python()
+
+    # Add embedded drivers/third-party licenses
+    python_deps.append({
+        "name": "Owon XDM1041 Driver",
+        "version": "embedded",
+        "license": "Unknown (Default Copyright)",
+        "repo": "https://github.com/ElDuderino/XDM1041Python",
+    })
+
     write_output(npm_deps, python_deps)
     print(f"\nTotal: {len(npm_deps)} npm + {len(python_deps)} Python packages")
 

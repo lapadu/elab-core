@@ -80,13 +80,7 @@ def _pick_observed_value(payload: dict) -> float:
 
 def _get_task_for_source(state: Any, source_id: str) -> dict | None:
     """Return task manifest dict for a source id, if currently registered."""
-    with state.atomic_update():
-        for provider_list in state.providers.values():
-            for provider in provider_list:
-                for task in provider.get('tasks', []) or []:
-                    if task.get('id') == source_id:
-                        return task
-    return None
+    return state.get_task(source_id)
 
 
 def _resolve_digit_step(accuracy: dict, decoder: Any) -> float:

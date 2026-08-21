@@ -20,6 +20,43 @@ describe('StreamBuffer', () => {
     expect(b.getData()).toEqual([{ t: 100, v: 1 }])
   })
 
+  describe('zero and falsy timestamps', () => {
+    it('treats timestamp 0 as a real timestamp, not as missing', () => {
+      const b = new StreamBuffer()
+      b.push({ value: 10, timestamp: 0 })
+      b.push({ value: 11, timestamp: 50 })
+      b.push({ value: 12, timestamp: 100 })
+      expect(b.getData()).toEqual([
+        { t: 0, v: 10 },
+        { t: 50, v: 11 },
+        { t: 100, v: 12 },
+      ])
+      expect(b.getLatest()).toBe(12)
+    })
+
+    it('expands a linear chunk that starts at t=0', () => {
+      const b = new StreamBuffer()
+      b.push({ values: [1, 2, 3], distribution: 'linear', startTime: 0, endTime: 20 })
+      expect(b.getData()).toEqual([
+        { t: 0, v: 1 },
+        { t: 10, v: 2 },
+        { t: 20, v: 3 },
+      ])
+    })
+
+    it('keeps accepting samples after a clear', () => {
+      const b = new StreamBuffer()
+      b.push({ value: 1, timestamp: 5000 })
+      b.clear()
+      b.push({ value: 2, timestamp: 0 })
+      b.push({ value: 3, timestamp: 50 })
+      expect(b.getData()).toEqual([
+        { t: 0, v: 2 },
+        { t: 50, v: 3 },
+      ])
+    })
+  })
+
   it('caps buffer at maxSize (rolling window)', () => {
     const b = new StreamBuffer(3)
     for (let i = 0; i < 10; i++) {

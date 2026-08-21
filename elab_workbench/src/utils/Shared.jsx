@@ -2,10 +2,10 @@
 import React from 'react';
 import { 
   Activity, AlertCircle, AlertTriangle, Archive, BarChart2, Calculator, Camera, Check, ChevronDown, ChevronRight, 
-  ChevronsLeft, ChevronsRight, Circle, Code, Cpu, Database, Download, Eye, EyeOff, FileCode, FileJson, 
-  FileSpreadsheet, Grid, Grid2x2, Grid3x2, Inbox, Info, Layers, Layout, Link, ListChevronsUpDown, ListCollapse, Loader2, Maximize, Maximize2, Minimize, MousePointer2,
-  Menu, Move, Palette, Pause, Play, Plus, Radio, RefreshCw, RotateCcw, Save, Send, Server, Settings, ShieldAlert,
-  Sigma, Square, Sidebar, Table, Target, Thermometer, Trash2, Video, Wifi, WifiOff, X, Zap, ChevronsDown, Table2
+  ChevronsLeft, ChevronsRight, Circle, Code, Cpu, Database, Download, Droplets, Eye, EyeOff, FileCode, FileJson, 
+  FileSpreadsheet, Gauge, Grid, Grid2x2, Grid3x2, Inbox, Info, Layers, Layout, Link, ListChevronsUpDown, ListCollapse, Loader, Loader2, Maximize, Maximize2, Minimize, MousePointer2,
+  Menu, Move, Palette, Pause, Play, Plus, Radio, RefreshCw, Repeat, RotateCcw, Save, Search, Send, Server, Settings, ShieldAlert, Signal,
+  Sigma, Square, Sidebar, Table, Target, Thermometer, Trash2, TrendingUp, TrendingDown, Video, Wifi, WifiOff, Wind, X, Zap, ChevronsDown, Table2
 } from 'lucide-react';
 
 export const COLOR_PALETTE = [
@@ -92,10 +92,17 @@ export const Icons = {
     Activity, Settings, Zap, Wifi, Move, Trash2, Maximize2, Save, Radio, Cpu, RotateCcw, 
     Thermometer, Video, Download, RefreshCw, Server, Code, Database, Calculator, Layers, 
     Plus, Layout, Link, Eye, EyeOff, FileJson, X, Grid, Grid2x2, Grid3x2, Sidebar, Table, Target, FileSpreadsheet, Sigma, ChevronRight, 
-    ChevronDown, ListChevronsUpDown, ListCollapse, Palette, Play, MousePointer2, Square, Circle, AlertTriangle, Loader2, WifiOff, Pause,
+    ChevronDown, ListChevronsUpDown, ListCollapse, Palette, Play, MousePointer2, Square, Circle, AlertTriangle, Loader, Loader2, WifiOff, Pause,
     FileCode, Inbox, AlertCircle, Info, ChevronsLeft, ChevronsRight, Check, Archive, Minimize, Maximize,
-    Send, Camera, BarChart2, ChevronsDown, Table2, Menu, ShieldAlert
+    Send, Camera, BarChart2, ChevronsDown, Table2, Menu, ShieldAlert, TrendingUp, TrendingDown, Repeat, Search, Signal, Droplets, Wind, Gauge
 };
+
+/**
+ * mousedown handler for instrument toolbar buttons: keeps the button from
+ * taking DOM focus on click, so pressing a modifier key later does not reveal
+ * a focus ring on the last button used. Tab focus stays intact.
+ */
+export const preventFocusOnMouseDown = (e) => e.preventDefault();
 
 export const ColorPicker = ({ task, onUpdateTask, label = "Instrument Color" }) => (
   <div className="p-4 bg-slate-900 h-full overflow-y-auto custom-scrollbar">

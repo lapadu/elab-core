@@ -1,5 +1,9 @@
 import { useEffect, useRef } from "react";
 import { SYSTEM_COLORS } from "../../../utils/Shared.jsx";
+import { zoomXDuration } from "./canvasMath.js";
+
+/** Minimum left-drag distance (px) before the view actually pans. */
+const PAN_THRESHOLD_PX = 4;
 
 /**
  * Reusable canvas interaction hook for pan and zoom.
@@ -17,6 +21,11 @@ import { SYSTEM_COLORS } from "../../../utils/Shared.jsx";
  * @param {function}           [options.onDoubleClick]  - Custom double-click handler.
  * @param {function}           [options.onSettingsChange] - Debounced config sync (scope).
  * @param {function}           [options.clampX]         - (xMin, xMax) => {xMin, xMax} clamper for range mode.
+ * @param {function}           [options.getXAnchorFraction] - Duration mode: fraction k of the
+ *   window by which the time anchor itself moves when the duration changes
+ *   (anchor = base + k * duration). 0 for a fixed edge anchor, 0.5 when the view
+ *   is trigger-aligned to the window centre. Needed to keep wheel zoom pinned to
+ *   the cursor.
  * @param {React.RefObject}    [options.autoscaleOverride] - Immediate autoscale override ref (scope).
  * @param {Array}              [options.extraDeps]       - Additional effect dependencies.
  */
@@ -28,6 +37,7 @@ export const useCanvasInteraction = (canvasRef, viewport, options) => {
     onSettingsChange,
     clampX,
     clampDurationOffset,
+    getXAnchorFraction,
     onRightDoubleClick,
     onLeftClickHitTest,
     onLeftDoubleClickHitTest,
@@ -38,6 +48,7 @@ export const useCanvasInteraction = (canvasRef, viewport, options) => {
 
   const interactionState = useRef({ 
     isPanning: false, 
+    panActive: false,
     snapshot: null,
     isRightDown: false,
     isTriggerDragging: false,
@@ -106,23 +117,20 @@ export const useCanvasInteraction = (canvasRef, viewport, options) => {
       const doXZoom = shiftKey || (!shiftKey && !altKey);
       if (doXZoom) {
         if (xMode === "duration") {
-          const snap = {
-            x_duration: viewport.current.x_duration,
-            x_offset: viewport.current.x_offset,
-          };
-          const newDuration = snap.x_duration * factor;
-          const durationDelta = snap.x_duration - newDuration;
-          viewport.current.x_duration = newDuration;
-          let newOff = snap.x_offset + (1 - normalizedX) * durationDelta;
-          if (clampDurationOffset) {
-            newOff = clampDurationOffset(newOff, newDuration);
-          } else {
-            const maxHist = Math.max(newDuration * 10, 60000);
-            newOff = Math.max(-newDuration * 2, Math.min(maxHist, newOff));
-          }
-          viewport.current.x_offset = newOff;
-          settings.timeWindow = newDuration / 1000;
-          
+          // viewEnd = anchorBase + k*duration - offset, so the offset correction
+          // that pins the cursor depends on how far the anchor itself moves.
+          const anchorK = getXAnchorFraction ? getXAnchorFraction() : 0;
+          const zoomed = zoomXDuration(
+            viewport.current,
+            normalizedX,
+            factor,
+            clampDurationOffset,
+            anchorK,
+          );
+          viewport.current.x_duration = zoomed.x_duration;
+          viewport.current.x_offset = zoomed.x_offset;
+          settings.timeWindow = zoomed.x_duration / 1000;
+
           xChanged = true;
         } else {
           // Range mode (spectrum).
@@ -174,6 +182,7 @@ export const useCanvasInteraction = (canvasRef, viewport, options) => {
           if (result === 'handled') return;
         }
         interactionState.current.isPanning = true;
+        interactionState.current.panActive = false;
         interactionState.current.snapshot = {
           x_duration: viewport.current.x_duration,
           x_offset: viewport.current.x_offset,
@@ -258,6 +267,13 @@ export const useCanvasInteraction = (canvasRef, viewport, options) => {
       const dx = e.clientX - snap.startX;
       const dy = e.clientY - snap.startY;
 
+      // Ignore sub-threshold movement so the jitter between the two clicks of a
+      // double-click cannot pan the view.
+      if (!interactionState.current.panActive) {
+        if (Math.hypot(dx, dy) < PAN_THRESHOLD_PX) return;
+        interactionState.current.panActive = true;
+      }
+
       if (xMode === "duration") {
         const timePerPx = snap.x_duration / rect.width;
         let newOff = snap.x_offset + dx * timePerPx;
@@ -302,6 +318,7 @@ export const useCanvasInteraction = (canvasRef, viewport, options) => {
           canvas.style.cursor = "default";
         } else if (interactionState.current.isPanning) {
           interactionState.current.isPanning = false;
+          interactionState.current.panActive = false;
           interactionState.current.snapshot = null;
           canvas.style.cursor = "default";
         }

@@ -5,8 +5,10 @@ import React, {
   useCallback,
   useState,
 } from "react";
-import { Icons } from "../../../utils/Shared";
+import { Icons, preventFocusOnMouseDown } from "../../../utils/Shared";
 import { useSpectrumCanvas } from "../hooks/useSpectrumCanvas";
+import { useChannelSources } from "../hooks/useChannelSources";
+import ChannelToolbar from "./ChannelToolbar";
 import { Draggable } from "../../../components/Draggable";
 
 const SpectrumWidget = ({
@@ -17,6 +19,7 @@ const SpectrumWidget = ({
 }) => {
   const canvasRef = useRef(null);
   const [stats, setStats] = useState({});
+  const [channelMenuOpen, setChannelMenuOpen] = useState(false);
 
   const uiSettings = useMemo(() => ({
     isOverlayVisible: task.config?.isOverlayVisible ?? true,
@@ -28,12 +31,8 @@ const SpectrumWidget = ({
     onUpdateTask({ ...task, config: newConfig });
   }, [task, onUpdateTask]);
 
-  const sources = useMemo(() => {
-    const s = [];
-    if (task.inputs?.source) s.push(task.inputs.source);
-    if (task.extraChannels) s.push(...task.extraChannels);
-    return Array.from(new Map(s.map((src) => [src?.id, src])).values());
-  }, [task]);
+  const { sources, addSource, removeSource, updateSourceMeta, reorderSources, handleAction } =
+    useChannelSources(task, onUpdateTask);
 
   useSpectrumCanvas(canvasRef, sources, streamBuffers, task, uiSettings, setStats);
 
@@ -52,14 +51,7 @@ const SpectrumWidget = ({
         console.warn("[Spectrum] Rejected drop – only time-domain signals (SENSOR/ACTUATOR) are accepted.");
         return;
       }
-      if (dropped.id === task.id || sources.find(s => s.id === dropped.id)) return;
-      const newInputs = !task.inputs?.source
-        ? { ...task.inputs, source: dropped }
-        : task.inputs;
-      const newExtra = task.inputs?.source
-        ? [...(task.extraChannels || []), dropped]
-        : (task.extraChannels || []);
-      onUpdateTask({ ...task, inputs: newInputs, extraChannels: newExtra });
+      addSource(dropped);
     } catch (err) {
       console.error("Error handling drop in Spectrum:", err);
     }
@@ -98,23 +90,26 @@ const SpectrumWidget = ({
 
   // --- Display mode ---
   return (
-    <div onDragOver={handleDragOver} onDrop={handleDrop} className="h-full w-full bg-slate-950 relative group overflow-hidden">
+    <div onDragOver={handleDragOver} onDrop={handleDrop} className="h-full w-full bg-slate-950 relative group overflow-hidden select-none">
       <canvas ref={canvasRef} className="w-full h-full block" />
 
-      {/* Channel indicators */}
-      {sources.length > 0 && (
-        <div className="absolute top-2 left-2 flex items-center gap-1 z-40">
-          {sources.slice(0, 4).map(s => (
-            <div key={s.id} className="w-2 h-2 rounded-full ring-1 ring-black/30" style={{ backgroundColor: s.color }} />
-          ))}
-          {sources.length > 4 && <span className="text-[10px] text-slate-500">+{sources.length - 4}</span>}
-          <span className="text-[10px] font-bold text-slate-500 uppercase ml-1">{sources.length} CH</span>
-        </div>
-      )}
+      {/* Channel indicator — click to open the channel menu */}
+      <ChannelToolbar
+        sources={sources}
+        onRemoveSource={removeSource}
+        onColorChange={(sourceId, color) => updateSourceMeta(sourceId, "color", color)}
+        onAction={handleAction}
+        onReorder={reorderSources}
+        showTriggers={false}
+        channelMenuOpen={channelMenuOpen}
+        onToggleChannelMenu={() => setChannelMenuOpen(prev => !prev)}
+        onCloseChannelMenu={() => setChannelMenuOpen(false)}
+      />
 
       {/* Toolbar */}
       <div className="absolute top-2 right-2 flex items-center gap-2">
         <button
+          onMouseDown={preventFocusOnMouseDown}
           onClick={() => updateConfig("isOverlayVisible", !uiSettings.isOverlayVisible)}
           className="p-1.5 text-slate-400 bg-slate-900/50 rounded-full hover:bg-slate-800 hover:text-white transition-all opacity-0 group-hover:opacity-100"
           title="Toggle overlay"
@@ -123,6 +118,7 @@ const SpectrumWidget = ({
           <Icons.EyeOff size={14} className={!uiSettings.isOverlayVisible ? "block" : "hidden"} />
         </button>
         <button
+          onMouseDown={preventFocusOnMouseDown}
           onClick={exportSpectrumData}
           className="p-1.5 text-slate-400 bg-slate-900/50 rounded-full hover:bg-slate-800 hover:text-white transition-all opacity-0 group-hover:opacity-100"
           title="Download spectrum data"

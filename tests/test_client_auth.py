@@ -68,6 +68,9 @@ class FakeSio:
     def trigger(self, event, data):
         self._handlers[event](data)
 
+    def disconnect(self):
+        pass
+
 
 # --- Canonicalization parity -----------------------------------------------
 

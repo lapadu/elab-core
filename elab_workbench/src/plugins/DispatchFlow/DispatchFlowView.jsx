@@ -9,8 +9,8 @@ import { SYSTEM_COLORS } from '../../utils/Shared.jsx';
  *
  * Props: { slots } – the current slot state from App.
  */
-export default function DispatchFlowView({ slots }) {
-  const { nodes, edges } = useMemo(() => buildGraph(slots), [slots]);
+export default function DispatchFlowView({ slots, providers }) {
+  const { nodes, edges } = useMemo(() => buildGraph(slots, providers), [slots, providers]);
 
   if (nodes.length === 0) {
     return (
@@ -20,9 +20,10 @@ export default function DispatchFlowView({ slots }) {
     );
   }
 
-  // Separate triggers from main flow
+  // Separate triggers and off-grid from main flow
   const triggers = nodes.filter((n) => n.type === 'TRIGGER');
-  const flowNodes = nodes.filter((n) => n.type !== 'TRIGGER');
+  const offGridNodes = nodes.filter((n) => n.isOffGrid);
+  const flowNodes = nodes.filter((n) => n.type !== 'TRIGGER' && !n.isOffGrid);
 
   // Layout: categorize into columns by connection-based role
   const sources = flowNodes.filter((n) => n.role === 'source');
@@ -39,10 +40,22 @@ export default function DispatchFlowView({ slots }) {
 
   // Assign positions
   const positions = new Map();
-  let totalWidth = 0;
+  const hasOffGrid = offGridNodes.length > 0;
+  const offGridColX = 40;
+  const dividerX = offGridColX + NODE_W + 40; // 280
+  const mainFlowStartX = hasOffGrid ? dividerX + 40 : 40;
 
+  // Assign positions for off-grid nodes
+  if (hasOffGrid) {
+    offGridNodes.forEach((node, rowIdx) => {
+      const y = rowIdx * (NODE_H + ROW_GAP) + 40;
+      positions.set(node.id, { x: offGridColX, y });
+    });
+  }
+
+  let totalWidth = mainFlowStartX;
   columns.forEach((col, colIdx) => {
-    const colX = colIdx * (NODE_W + COL_GAP) + 40;
+    const colX = mainFlowStartX + colIdx * (NODE_W + COL_GAP);
     col.forEach((node, rowIdx) => {
       const y = rowIdx * (NODE_H + ROW_GAP) + 40;
       positions.set(node.id, { x: colX, y });
@@ -50,11 +63,21 @@ export default function DispatchFlowView({ slots }) {
     totalWidth = colX + NODE_W + 40;
   });
 
-  const maxFlowHeight = columns.length > 0
-    ? Math.max(...columns.map((c) => c.length * NODE_H + (c.length - 1) * ROW_GAP))
-    : 0;
+  const maxFlowHeight = Math.max(
+    hasOffGrid ? offGridNodes.length * NODE_H + (offGridNodes.length - 1) * ROW_GAP : 0,
+    ...columns.map((c) => c.length * NODE_H + (c.length - 1) * ROW_GAP)
+  );
 
   // Center columns vertically
+  if (hasOffGrid) {
+    const colHeight = offGridNodes.length * NODE_H + (offGridNodes.length - 1) * ROW_GAP;
+    const offset = (maxFlowHeight - colHeight) / 2;
+    offGridNodes.forEach((node) => {
+      const pos = positions.get(node.id);
+      pos.y += offset;
+    });
+  }
+
   columns.forEach((col) => {
     const colHeight = col.length * NODE_H + (col.length - 1) * ROW_GAP;
     const offset = (maxFlowHeight - colHeight) / 2;
@@ -120,6 +143,44 @@ export default function DispatchFlowView({ slots }) {
           </marker>
         </defs>
 
+        {/* Off-Grid divider line */}
+        {hasOffGrid && (
+          <g>
+            <line
+              x1={dividerX}
+              y1="10"
+              x2={dividerX}
+              y2={maxFlowHeight + 30}
+              stroke="#334155"
+              strokeWidth="2"
+              strokeDasharray="6 4"
+            />
+            <text
+              x={dividerX + 10}
+              y="20"
+              fill="#64748b"
+              fontSize="9"
+              fontWeight="bold"
+              fontFamily="sans-serif"
+              className="select-none uppercase tracking-wider"
+            >
+              Grid
+            </text>
+            <text
+              x={dividerX - 10}
+              y="20"
+              textAnchor="end"
+              fill="#64748b"
+              fontSize="9"
+              fontWeight="bold"
+              fontFamily="sans-serif"
+              className="select-none uppercase tracking-wider"
+            >
+              Off-Grid
+            </text>
+          </g>
+        )}
+
         {/* Trigger divider line */}
         {triggers.length > 0 && (
           <>
@@ -165,7 +226,9 @@ export default function DispatchFlowView({ slots }) {
           if (!pos) return null;
           const style = node.type === 'TRIGGER'
             ? ROLE_STYLES.trigger
-            : (ROLE_STYLES[node.role] || 'border-slate-600 bg-slate-900');
+            : node.isOffGrid
+              ? 'border-dashed border-slate-700 bg-slate-950/40 opacity-75'
+              : (ROLE_STYLES[node.role] || 'border-slate-600 bg-slate-900');
           const badge = TYPE_BADGE[node.type] || 'bg-slate-800 text-slate-400';
 
           return (
@@ -193,7 +256,7 @@ export default function DispatchFlowView({ slots }) {
                     {node.type}
                   </span>
                   <span className="text-[9px] text-slate-600">
-                    Slot {node.slot}
+                    {node.isOffGrid ? 'Off-Grid' : `Slot ${node.slot}`}
                   </span>
                   {node.role === 'processor' && (
                     <span className="text-[8px] text-amber-500">⇄</span>
@@ -236,15 +299,19 @@ export default function DispatchFlowView({ slots }) {
  * - processor: node has both incoming and outgoing edges
  * - source (fallback): isolated node (no edges)
  */
-function buildGraph(slots) {
+function buildGraph(slots, providers) {
   const nodes = [];
   const edges = [];
   const taskSlotMap = new Map(); // taskId -> nodeId
 
-  // 1. Collect all active tasks (including triggers)
+  const activeGridTaskIds = new Set();
+  
+  // 1. Collect all active tasks in grid (including triggers)
   for (const [slotIdx, task] of Object.entries(slots)) {
     if (!task) continue;
     const taskId = task.originalId || task.id;
+    activeGridTaskIds.add(taskId);
+    activeGridTaskIds.add(task.id);
     const nodeId = `slot_${slotIdx}`;
     taskSlotMap.set(taskId, nodeId);
     taskSlotMap.set(task.id, nodeId);
@@ -257,10 +324,54 @@ function buildGraph(slots) {
       type: (task.type || 'SENSOR').toUpperCase(),
       color: task.color,
       role: 'source', // initial, will be reclassified below
+      isOffGrid: false,
     });
   }
 
-  // 2. Build edges from input connections
+  // 2. Collect all dispatched off-grid provider tasks (only if they are referenced by active grid tasks)
+  const referencedSourceIds = new Set();
+  for (const slotTask of Object.values(slots)) {
+    if (!slotTask) continue;
+    if (slotTask.inputs?.source) {
+      referencedSourceIds.add(slotTask.inputs.source.originalId || slotTask.inputs.source.id);
+      referencedSourceIds.add(slotTask.inputs.source.id);
+    }
+    if (Array.isArray(slotTask.extraChannels)) {
+      for (const ch of slotTask.extraChannels) {
+        if (ch) {
+          referencedSourceIds.add(ch.originalId || ch.id);
+          referencedSourceIds.add(ch.id);
+        }
+      }
+    }
+  }
+
+  for (const provider of providers || []) {
+    if (!provider || provider.isUiInstance) continue;
+    const tasks = provider.tasks?.length ? provider.tasks : [provider];
+    for (const task of tasks) {
+      const taskId = task.originalId || task.id;
+      if (!activeGridTaskIds.has(taskId) && !activeGridTaskIds.has(task.id)) {
+        if (referencedSourceIds.has(taskId) || referencedSourceIds.has(task.id)) {
+          const nodeId = `offgrid_${taskId}`;
+          taskSlotMap.set(taskId, nodeId);
+          taskSlotMap.set(task.id, nodeId);
+
+          nodes.push({
+            id: nodeId,
+            taskId,
+            name: task.name || taskId,
+            type: (task.type || 'SENSOR').toUpperCase(),
+            color: task.color,
+            role: 'source',
+            isOffGrid: true,
+          });
+        }
+      }
+    }
+  }
+
+  // 3. Build edges from input connections
   const hasIncoming = new Set();
   const hasOutgoing = new Set();
 
@@ -302,7 +413,7 @@ function buildGraph(slots) {
     }
   }
 
-  // 3. Classify roles based on actual connections
+  // 4. Classify roles based on actual connections
   for (const node of nodes) {
     if (node.type === 'TRIGGER') {
       node.role = 'trigger';

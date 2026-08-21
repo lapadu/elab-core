@@ -22,7 +22,9 @@ def load_overrides(manifest: Dict[str, Any], overrides_file: str) -> None:
         if 'name' in task_overrides:
             task['name'] = task_overrides['name']
         if 'config' in task_overrides and task.get('config'):
-            task['config'].update(task_overrides['config'])
+            cfg = dict(task_overrides['config'])
+            cfg.pop('configFields', None)
+            task['config'].update(cfg)
     logger.info("Overrides from '%s' applied.", overrides_file)
 
 
@@ -30,10 +32,12 @@ def save_overrides(manifest: Dict[str, Any], overrides_file: str) -> None:
     """Stores only user-editable fields (color, name, config) in the cache."""
     overrides: Dict[str, Any] = {}
     for task in manifest.get('tasks', []):
+        task_config = dict(task.get('config', {}))
+        task_config.pop('configFields', None)
         overrides[task['id']] = {
             'color': task.get('color'),
             'name': task.get('name'),
-            'config': task.get('config', {})
+            'config': task_config
         }
     with open(overrides_file, 'w', encoding='utf-8') as f:
         json.dump(overrides, f, indent=2)

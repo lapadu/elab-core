@@ -133,7 +133,7 @@ def verify_payload(
         return False, "timestamp skew exceeds limit"
     expected = sign_payload(payload, secret_hex, float(ts))
     if not hmac.compare_digest(expected, sig):
-        logger.warning("HMAC MISMATCH DEBUG: canonical=%r, ts=%s", _canonical_payload(payload), ts)
+        logger.debug("HMAC MISMATCH DEBUG: canonical=%r, ts=%s", _canonical_payload(payload), ts)
         return False, "signature mismatch"
     return True, ""
 

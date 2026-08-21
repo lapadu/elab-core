@@ -1,17 +1,17 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, {
     useRef,
-    useMemo,
     useCallback,
     useState,
 } from "react";
-import { Icons, COLOR_PALETTE } from "../../../utils/Shared";
-import dispatcher from "../../../services/DispatcherClient";
-import { useScopeCanvas } from "../hooks/useScopeCanvas";
+import { Icons, COLOR_PALETTE, preventFocusOnMouseDown } from "../../../utils/Shared";
+import { useScopeCanvas, computeAmplitudeFitBounds } from "../hooks/useScopeCanvas";
+import { useChannelSources } from "../hooks/useChannelSources";
+import { useTriggerModel } from "../hooks/useTriggerModel";
 import { Draggable } from "../../../components/Draggable";
-import ChannelMenu from "./ChannelMenu";
-import TriggerMenu from "./TriggerMenu";
+import ChannelToolbar from "./ChannelToolbar";
 import { detectPeriod } from "../../../utils/fftProcessing";
+import { applyDroppedTrigger } from "../utils/configUtils";
 
 const ScopeGraphWidget = ({
   task,
@@ -20,13 +20,11 @@ const ScopeGraphWidget = ({
   onUpdateTask,
 }) => {
   const canvasRef = useRef(null);
-  const channelAnchorRef = useRef(null);
-  const triggerAnchorRef = useRef(null);
   const [stats, setStats] = useState({});
   const [channelMenuOpen, setChannelMenuOpen] = useState(false);
   const [triggerMenuOpen, setTriggerMenuOpen] = useState(false);
   const [uiSettings, setUiSettings] = useState({
-      isOverlayVisible: task.config?.isOverlayVisible ?? true,
+      isOverlayVisible: task.config?.isOverlayVisible ?? false,
       isPaused: task.config?.isPaused ?? false,
       showUncertaintyBand: task.config?.showUncertaintyBand ?? false,
   });
@@ -50,28 +48,16 @@ const ScopeGraphWidget = ({
 
   const singleSource = task.config?.singleSource;
 
-  const sources = useMemo(() => {
-    // In single-source mode, use only the task's own stream as input.
-    if (singleSource) {
-      return [{
-        id: task.originalId || task.id,
-        name: task.name,
-        color: task.color,
-        config: task.config,
-        providerId: task.providerId,
-        originalId: task.originalId,
-        actions: task.actions || [],
-      }];
-    }
-    const s = [];
-    if (task.inputs?.source) s.push(task.inputs.source);
-    if (task.extraChannels) s.push(...task.extraChannels);
-    // Ensure unique sources by ID (avoid duplicate rendering / ghost traces)
-    return Array.from(new Map(s.map((src) => [src?.id, src])).values());
-  }, [task, singleSource]);
+  const { sources, addSource, removeSource, updateSourceMeta, reorderSources, handleAction: channelAction } =
+    useChannelSources(task, onUpdateTask, { singleSource });
+
+  const {
+    triggers, activeTrigger, patchTriggerById, moveTriggerToChannel,
+    activateTrigger, deleteTrigger, addTriggerForChannel,
+  } = useTriggerModel(task, onUpdateTask);
 
   // --- HOOKS ---
-  const { centerTriggerInView } = useScopeCanvas(
+  const { resetViewToLiveEdge } = useScopeCanvas(
     canvasRef,
     sources,
     streamBuffers,
@@ -85,11 +71,10 @@ const ScopeGraphWidget = ({
   );
 
   const handleAction = useCallback((source, actionId) => {
-    if (!source) return;
-
-    // Special handling for RAW capture: clear buffers and await data.
-    if (actionId === 'START_RAW') {
-      const sourceId = source.originalId || source.id;
+    channelAction(source, actionId, (src, id) => {
+      // Special handling for RAW capture: clear buffers and await data.
+      if (id !== 'START_RAW') return;
+      const sourceId = src.originalId || src.id;
       const buf = streamBuffers?.get(sourceId);
       if (buf) buf.clear();
 
@@ -97,12 +82,8 @@ const ScopeGraphWidget = ({
         updateUiSetting('isPaused', false);
       }
       setRawCaptureAwaiting(true);
-    }
-
-    const providerId = source.config?.providerId || source.providerId;
-    const target = providerId || `prov_${source.originalId || source.id}`;
-    dispatcher.sendControlCommand(target, { action: actionId });
-  }, [streamBuffers, uiSettings.isPaused, updateUiSetting]);
+    });
+  }, [channelAction, streamBuffers, uiSettings.isPaused, updateUiSetting]);
 
   const handleAutoset = useCallback(() => {
     // Use channel 1 (first source) for period detection.
@@ -121,26 +102,14 @@ const ScopeGraphWidget = ({
       console.log('[Autoset] period:', period.toFixed(3), 'ms → timeWindow:', updates.timeWindow.toFixed(4), 's');
     }
 
-    // Autoscale Y based on visible data range
+    // Vertical scaling: exactly the same amplitude fit as left-double-click.
     let globalMin = Infinity, globalMax = -Infinity;
     data.forEach(p => {
       if (p.v < globalMin) globalMin = p.v;
       if (p.v > globalMax) globalMax = p.v;
     });
     if (globalMin !== Infinity && globalMax !== -Infinity) {
-      let range = globalMax - globalMin;
-      if (range === 0) range = globalMax === 0 ? 2 : Math.abs(globalMax);
-      const pad = range * 0.1;
-      let yMin = globalMin - pad;
-      let yMax = globalMax + pad;
-
-      // If trigger is configured, center Y on trigger level
-      if (task.config?.trigger) {
-        const lvl = task.config.trigger.level ?? 0;
-        const halfRange = (yMax - yMin) / 2;
-        yMin = lvl - halfRange;
-        yMax = lvl + halfRange;
-      }
+      const { min: yMin, max: yMax } = computeAmplitudeFitBounds(globalMin, globalMax);
       updates.yMin = yMin;
       updates.yMax = yMax;
     }
@@ -148,9 +117,9 @@ const ScopeGraphWidget = ({
     setUiSettings(s => ({ ...s, ...updates }));
     onUpdateTask({ ...task, config: { ...task.config, ...updates } });
 
-    // Center trigger in the view after autoset (pass freshly computed Y range)
-    centerTriggerInView(updates.yMin, updates.yMax);
-  }, [sources, streamBuffers, task, onUpdateTask, centerTriggerInView]);
+    // Bring the view back to the live edge, keeping the freshly computed Y range.
+    resetViewToLiveEdge(updates.yMin, updates.yMax);
+  }, [sources, streamBuffers, task, onUpdateTask, resetViewToLiveEdge]);
 
   const exportScopeData = () => {
       const payload = {
@@ -158,13 +127,19 @@ const ScopeGraphWidget = ({
           sources: {},
       };
 
+      // Export every configured channel; a failure/missing buffer on one
+      // channel must not abort the export of the remaining ones.
       sources.forEach((s) => {
-          const buf = streamBuffers?.get(s.id) || streamBuffers?.get(s.originalId);
-          if (!buf) return;
-          payload.sources[s.id] = {
-              name: s.name,
-              data: buf.getData(),
-          };
+          try {
+              const buf = streamBuffers?.get(s.id) || streamBuffers?.get(s.originalId);
+              payload.sources[s.id] = {
+                  name: s.name,
+                  data: buf ? buf.getData() : [],
+              };
+          } catch (error) {
+              console.error(`[ExportScopeData] Failed to export channel "${s.name}":`, error);
+              payload.sources[s.id] = { name: s.name, data: [] };
+          }
       });
 
       const blob = new Blob([JSON.stringify(payload, null, 2)], {
@@ -190,72 +165,17 @@ const ScopeGraphWidget = ({
     e.stopPropagation();
     try {
       const droppedTask = JSON.parse(e.dataTransfer.getData("task"));
-      
+
       if (droppedTask.type === 'TRIGGER') {
-        onUpdateTask({ 
-          ...task, 
-          config: { 
-            ...task.config, 
-            trigger: { 
-              mode: droppedTask.config.mode, 
-              level: droppedTask.config.level || 0,
-              channelId: sources[0]?.id || null
-            } 
-          } 
-        });
+        onUpdateTask(applyDroppedTrigger(task, droppedTask));
         return;
       }
 
-      if (droppedTask.id === task.id || sources.find(s => s.id === droppedTask.id)) return;
-      const newInputs = !task.inputs?.source ? { ...task.inputs, source: droppedTask } : task.inputs;
-      const newExtra = task.inputs?.source ? [...(task.extraChannels || []), droppedTask] : (task.extraChannels || []);
-      onUpdateTask({ ...task, inputs: newInputs, extraChannels: newExtra });
+      addSource(droppedTask);
     } catch (error) {
       console.error("Error handling drop in Scope:", error);
     }
   };
-
-  const updateSourceMeta = useCallback((sourceId, key, value) => {
-    // In single-source mode the task itself is the source.
-    if (singleSource) {
-      const updates = { ...task, [key]: value };
-      onUpdateTask(updates);
-      const targetProvider = task.providerId || task.originalId || task.id;
-      dispatcher.sendControlCommand(`prov_${targetProvider}`, {
-        action: "update_meta", payload: { [key]: value },
-      });
-      return;
-    }
-
-    const isPrimary = task.inputs?.source?.id === sourceId;
-    let updatedSource;
-    if (isPrimary) {
-        updatedSource = { ...task.inputs.source, [key]: value };
-    } else {
-        const source = task.extraChannels?.find(c => c.id === sourceId);
-        if (source) updatedSource = { ...source, [key]: value };
-    }
-    if (!updatedSource) return;
-
-    const newInputs = isPrimary ? { ...task.inputs, source: updatedSource } : task.inputs;
-    const newExtra = isPrimary ? task.extraChannels : task.extraChannels.map(c => c.id === sourceId ? updatedSource : c);
-    onUpdateTask({ ...task, inputs: newInputs, extraChannels: newExtra });
-
-    dispatcher.sendControlCommand(`prov_${updatedSource.originalId || updatedSource.id}`, {
-      action: "update_meta", payload: { [key]: value },
-    });
-  }, [task, onUpdateTask, singleSource]);
-
-  const removeSource = (sourceId) => {
-    const newInputs = task.inputs?.source?.id === sourceId ? { ...task.inputs, source: null } : task.inputs;
-    const newExtra = (task.extraChannels || []).filter(c => c.id !== sourceId);
-    onUpdateTask({ ...task, inputs: newInputs, extraChannels: newExtra });
-  };
-
-  const assignTriggerChannel = useCallback((channelId) => {
-    if (!task.config?.trigger) return;
-    updateUiSetting({ trigger: { ...task.config.trigger, channelId } });
-  }, [task.config, updateUiSetting]);
 
   // --- RENDER ---
   if (isConfigMode) {
@@ -279,35 +199,53 @@ const ScopeGraphWidget = ({
           </div>
         </div>
 
-        {task.config?.trigger && (
+        {triggers.length > 0 && (
           <div className="mb-6 border-b border-slate-800 pb-4">
             <div className="flex justify-between items-center mb-3">
-              <div className="text-xs font-bold text-yellow-500 uppercase flex items-center gap-2"><Icons.Target size={14} /> Trigger</div>
-              <button onClick={() => updateConfig({ trigger: null })} className="text-slate-500 hover:text-red-400 hover:bg-red-900/30 p-1 rounded transition-colors"><Icons.Trash2 size={14} /></button>
+              <div className="text-xs font-bold text-yellow-500 uppercase flex items-center gap-2"><Icons.Target size={14} /> Triggers</div>
             </div>
-            <div className="grid grid-cols-2 gap-2 mb-2">
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Mode</label>
-                <select value={task.config.trigger.mode} onChange={(e) => updateConfig({ trigger: { ...task.config.trigger, mode: e.target.value }})} className="w-full bg-slate-950 text-slate-200 text-xs p-1.5 rounded border border-slate-700 outline-none focus:border-blue-500">
-                  <option value="rising">Rising Edge</option>
-                  <option value="falling">Falling Edge</option>
-                  <option value="level">Level</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Level</label>
-                <input type="number" step="any" value={task.config.trigger.level} onChange={(e) => updateConfig({ trigger: { ...task.config.trigger, level: Number(e.target.value) }})} className="w-full bg-slate-950 text-slate-200 text-xs p-1.5 rounded border border-slate-700 outline-none focus:border-blue-500" />
-              </div>
-            </div>
-            <div>
-              <label className="text-[10px] text-slate-400 block mb-1">Channel</label>
-              <select value={task.config.trigger.channelId || ''} onChange={(e) => updateConfig({ trigger: { ...task.config.trigger, channelId: e.target.value }})} className="w-full bg-slate-950 text-slate-200 text-xs p-1.5 rounded border border-slate-700 outline-none focus:border-blue-500">
-                {sources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-            <div className="mt-2">
-              <label className="text-[10px] text-slate-400 block mb-1">Pretrigger (% vom neuesten Wert)</label>
-              <input type="number" min="0" max="100" step="1" value={task.config.trigger.pretrigger ?? 5} onChange={(e) => updateConfig({ trigger: { ...task.config.trigger, pretrigger: Math.max(0, Math.min(100, Number(e.target.value))) }})} className="w-full bg-slate-950 text-slate-200 text-xs p-1.5 rounded border border-slate-700 outline-none focus:border-blue-500" />
+            <div className="space-y-3">
+              {triggers.map((trg) => {
+                const isActive = trg.id === activeTrigger?.id;
+                return (
+                  <div key={trg.id} className={`p-2 rounded border ${isActive ? 'border-yellow-600/60 bg-yellow-900/10' : 'border-slate-800 bg-slate-950/40'}`}>
+                    <div className="flex justify-between items-center mb-2">
+                      <button
+                        onClick={() => activateTrigger(trg.id)}
+                        className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded transition-colors ${isActive ? 'bg-yellow-600 text-slate-900' : 'bg-slate-800 text-slate-400 hover:text-slate-200'}`}
+                        title="Set as active trigger (aligns time axis)"
+                      >
+                        {isActive ? 'Active' : 'Activate'}
+                      </button>
+                      <button onClick={() => deleteTrigger(trg.id)} className="text-slate-500 hover:text-red-400 hover:bg-red-900/30 p-1 rounded transition-colors"><Icons.Trash2 size={14} /></button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-1">Mode</label>
+                        <select value={trg.mode} onChange={(e) => patchTriggerById(trg.id, { mode: e.target.value })} className="w-full bg-slate-950 text-slate-200 text-xs p-1.5 rounded border border-slate-700 outline-none focus:border-blue-500">
+                          <option value="rising">Rising Edge</option>
+                          <option value="falling">Falling Edge</option>
+                          <option value="level">Level</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-1">Level</label>
+                        <input type="number" step="any" value={trg.level} onChange={(e) => patchTriggerById(trg.id, { level: Number(e.target.value) })} className="w-full bg-slate-950 text-slate-200 text-xs p-1.5 rounded border border-slate-700 outline-none focus:border-blue-500" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-400 block mb-1">Channel</label>
+                      <select value={trg.channelId || ''} onChange={(e) => moveTriggerToChannel(trg.id, e.target.value)} className="w-full bg-slate-950 text-slate-200 text-xs p-1.5 rounded border border-slate-700 outline-none focus:border-blue-500">
+                        {sources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="mt-2">
+                      <label className="text-[10px] text-slate-400 block mb-1">Pretrigger (% vom neuesten Wert)</label>
+                      <input type="number" min="0" max="100" step="1" value={trg.pretrigger ?? 5} onChange={(e) => patchTriggerById(trg.id, { pretrigger: Math.max(0, Math.min(100, Number(e.target.value))) })} className="w-full bg-slate-950 text-slate-200 text-xs p-1.5 rounded border border-slate-700 outline-none focus:border-blue-500" />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -346,7 +284,7 @@ const ScopeGraphWidget = ({
   }
 
   return (
-    <div onDragOver={handleDragOver} onDrop={handleDrop} className="h-full w-full bg-slate-950 relative group overflow-hidden">
+    <div onDragOver={handleDragOver} onDrop={handleDrop} className="h-full w-full bg-slate-950 relative group overflow-hidden select-none">
       <canvas ref={canvasRef} className="w-full h-full block" />
 
       {rawCaptureAwaiting && (
@@ -359,94 +297,44 @@ const ScopeGraphWidget = ({
         </div>
       )}
 
-      {/* Channel indicator — click to open the channel menu */}
-      {sources.length > 0 && (
-        <div className="absolute top-2 left-2 z-40">
-          <div className="flex items-center gap-2">
-            <button
-              ref={channelAnchorRef}
-              onClick={() => {
-                setChannelMenuOpen(prev => !prev);
-                setTriggerMenuOpen(false);
-              }}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${
-                channelMenuOpen
-                  ? 'bg-slate-700 text-slate-200 shadow-lg'
-                  : 'bg-slate-900/60 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-              }`}
-              title="Open channel menu"
-            >
-              <div className="flex items-center gap-0.5">
-                {sources.slice(0, 4).map(s => (
-                  <div key={s.id} className="w-2 h-2 rounded-full ring-1 ring-black/30" style={{ backgroundColor: s.color }} />
-                ))}
-                {sources.length > 4 && <span className="text-slate-500 ml-0.5">+{sources.length - 4}</span>}
-              </div>
-              <span>{sources.length} CH</span>
-              <Icons.ChevronDown size={10} className={`transition-transform ${channelMenuOpen ? 'rotate-180' : ''}`} />
-            </button>
-
-            {task.config?.trigger && (
-              <button
-                ref={triggerAnchorRef}
-                onClick={() => {
-                  setTriggerMenuOpen(prev => !prev);
-                  setChannelMenuOpen(false);
-                }}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${
-                  triggerMenuOpen
-                    ? 'bg-slate-700 text-slate-200 shadow-lg'
-                    : 'bg-slate-900/60 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-                }`}
-                title="Open trigger menu"
-              >
-                <Icons.Target size={10} />
-                <span className="truncate max-w-[90px]">{task.config.trigger.mode || 'trigger'}</span>
-                <Icons.ChevronDown size={10} className={`transition-transform ${triggerMenuOpen ? 'rotate-180' : ''}`} />
-              </button>
-            )}
-          </div>
-
-          {channelMenuOpen && (
-            <ChannelMenu
-              sources={sources}
-              onRemoveSource={removeSource}
-              onColorChange={(sourceId, color) => updateSourceMeta(sourceId, "color", color)}
-              onAction={handleAction}
-              rawCaptureAwaiting={rawCaptureAwaiting}
-              singleSource={singleSource}
-              onClose={() => setChannelMenuOpen(false)}
-              anchorRef={channelAnchorRef}
-            />
-          )}
-
-          {triggerMenuOpen && (
-            <TriggerMenu
-              trigger={task.config?.trigger}
-              channels={sources}
-              onAssignChannel={assignTriggerChannel}
-              onClose={() => setTriggerMenuOpen(false)}
-              anchorRef={triggerAnchorRef}
-            />
-          )}
-        </div>
-      )}
+      {/* Channel + trigger indicator — click to open the respective menu */}
+      <ChannelToolbar
+        sources={sources}
+        onRemoveSource={removeSource}
+        onColorChange={(sourceId, color) => updateSourceMeta(sourceId, "color", color)}
+        onAction={handleAction}
+        onReorder={reorderSources}
+        rawCaptureAwaiting={rawCaptureAwaiting}
+        singleSource={singleSource}
+        channelMenuOpen={channelMenuOpen}
+        onToggleChannelMenu={() => { setChannelMenuOpen(prev => !prev); setTriggerMenuOpen(false); }}
+        onCloseChannelMenu={() => setChannelMenuOpen(false)}
+        triggers={triggers}
+        activeTrigger={activeTrigger}
+        triggerMenuOpen={triggerMenuOpen}
+        onToggleTriggerMenu={() => { setTriggerMenuOpen(prev => !prev); setChannelMenuOpen(false); }}
+        onCloseTriggerMenu={() => setTriggerMenuOpen(false)}
+        onActivateTrigger={activateTrigger}
+        onMoveTrigger={moveTriggerToChannel}
+        onRemoveTrigger={deleteTrigger}
+        onAddTriggerForChannel={addTriggerForChannel}
+      />
 
       <div className="absolute top-2 right-2 flex items-center gap-2">
-          <button onClick={() => updateUiSetting('isPaused', !uiSettings.isPaused)} className="p-1.5 text-slate-400 bg-slate-900/50 rounded-full hover:bg-slate-800 hover:text-white transition-all opacity-0 group-hover:opacity-100" title="Pause/Resume">
+          <button onMouseDown={preventFocusOnMouseDown} onClick={() => updateUiSetting('isPaused', !uiSettings.isPaused)} className="p-1.5 text-slate-400 bg-slate-900/50 rounded-full hover:bg-slate-800 hover:text-white transition-all opacity-0 group-hover:opacity-100" title="Pause/Resume">
               {uiSettings.isPaused ? <Icons.Play size={14} /> : <Icons.Pause size={14} />}
           </button>
-          <button onClick={() => updateUiSetting('isOverlayVisible', !uiSettings.isOverlayVisible)} className="p-1.5 text-slate-400 bg-slate-900/50 rounded-full hover:bg-slate-800 hover:text-white transition-all opacity-0 group-hover:opacity-100" title="Toggle overlay">
+          <button onMouseDown={preventFocusOnMouseDown} onClick={() => updateUiSetting('isOverlayVisible', !uiSettings.isOverlayVisible)} className="p-1.5 text-slate-400 bg-slate-900/50 rounded-full hover:bg-slate-800 hover:text-white transition-all opacity-0 group-hover:opacity-100" title="Toggle overlay">
               <Icons.Eye size={14} className={`${!uiSettings.isOverlayVisible ? 'hidden' : 'block'}`} />
               <Icons.EyeOff size={14} className={`${!uiSettings.isOverlayVisible ? 'block' : 'hidden'}`} />
           </button>
-            <button onClick={() => updateUiSetting('showUncertaintyBand', !uiSettings.showUncertaintyBand)} className="p-1.5 text-slate-400 bg-slate-900/50 rounded-full hover:bg-slate-800 hover:text-white transition-all opacity-0 group-hover:opacity-100" title="Toggle uncertainty band">
+            <button onMouseDown={preventFocusOnMouseDown} onClick={() => updateUiSetting('showUncertaintyBand', !uiSettings.showUncertaintyBand)} className="p-1.5 text-slate-400 bg-slate-900/50 rounded-full hover:bg-slate-800 hover:text-white transition-all opacity-0 group-hover:opacity-100" title="Toggle uncertainty band">
               <Icons.Sigma size={14} className={`${uiSettings.showUncertaintyBand ? 'text-cyan-300' : ''}`} />
             </button>
-          <button onClick={handleAutoset} className="p-1.5 text-slate-400 bg-slate-900/50 rounded-full hover:bg-slate-800 hover:text-white transition-all opacity-0 group-hover:opacity-100" title="Autoset">
+          <button onMouseDown={preventFocusOnMouseDown} onClick={handleAutoset} className="p-1.5 text-slate-400 bg-slate-900/50 rounded-full hover:bg-slate-800 hover:text-white transition-all opacity-0 group-hover:opacity-100" title="Autoset">
               <Icons.Activity size={14} />
           </button>
-          <button onClick={() => exportScopeData()} className="p-1.5 text-slate-400 bg-slate-900/50 rounded-full hover:bg-slate-800 hover:text-white transition-all opacity-0 group-hover:opacity-100" title="Download scope data">
+          <button onMouseDown={preventFocusOnMouseDown} onClick={() => exportScopeData()} className="p-1.5 text-slate-400 bg-slate-900/50 rounded-full hover:bg-slate-800 hover:text-white transition-all opacity-0 group-hover:opacity-100" title="Download scope data">
               <Icons.Download size={14} />
           </button>
       </div>

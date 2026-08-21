@@ -17,6 +17,8 @@ export class StreamBuffer {
     this.lastValue = null;
     this.lastUncertainty = null;
     this.lastTimestamp = 0;
+    // Distinguishes "no data yet" from a legitimate timestamp of 0.
+    this.hasTimestamp = false;
   }
 
   /**
@@ -31,7 +33,8 @@ export class StreamBuffer {
     // Case 1: array or chunk processing for high-frequency streams.
     if (Array.isArray(values) && values.length > 0) {
       // A: linear distribution between start and end time.
-      if (distribution === 'linear' && startTime && endTime) {
+      // 0 is a valid point in time - never treat it as "missing".
+      if (distribution === 'linear' && startTime != null && endTime != null) {
         const count = values.length;
         const dt = (endTime - startTime) / (count > 1 ? (count - 1) : 1);
         for (let i = 0; i < count; i++) {
@@ -44,12 +47,12 @@ export class StreamBuffer {
       // B: discrete distribution with one timestamp per sample.
       else {
         const hasTimeArray = Array.isArray(timestamps) && timestamps.length === values.length;
-        const baseTime = timestamp || Date.now();
+        const baseTime = timestamp ?? Date.now();
 
         // Without explicit timestamps, keep the generated points monotonic so
         // rendering does not pile samples onto the same X position.
         let startTime = baseTime;
-        if (!hasTimeArray && this.lastTimestamp && startTime <= this.lastTimestamp) {
+        if (!hasTimeArray && this.hasTimestamp && startTime <= this.lastTimestamp) {
           startTime = this.lastTimestamp + 1;
         }
 
@@ -65,7 +68,7 @@ export class StreamBuffer {
     } 
     // Case 2: single-value payloads for legacy or low-speed streams.
     else if (value !== undefined) {
-      const t = timestamp || Date.now();
+      const t = timestamp ?? Date.now();
       const point = { t, v: value };
       if (pointUncertainty) point.u = pointUncertainty;
       newPoints.push(point);
@@ -74,7 +77,7 @@ export class StreamBuffer {
 
     if (newPoints.length > 0) {
         // Preserve time ordering by discarding points older than the last timestamp.
-        if (this.lastTimestamp && newPoints[0].t <= this.lastTimestamp) {
+        if (this.hasTimestamp && newPoints[0].t <= this.lastTimestamp) {
             const firstValidIdx = newPoints.findIndex(p => p.t > this.lastTimestamp);
             if (firstValidIdx === -1) {
                 // Every point is in the past, so nothing should be appended.
@@ -85,6 +88,7 @@ export class StreamBuffer {
 
         this.buffer = this.buffer.concat(newPoints);
         this.lastTimestamp = newPoints[newPoints.length - 1].t;
+        this.hasTimestamp = true;
         this.lastUncertainty = newPoints[newPoints.length - 1].u || null;
 
         // Trim by age first (cheap when nothing to drop).
@@ -179,6 +183,7 @@ export class StreamBuffer {
     this.lastValue = null;
     this.lastUncertainty = null;
     this.lastTimestamp = 0;
+    this.hasTimestamp = false;
   }
 
   /**

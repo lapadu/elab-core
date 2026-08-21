@@ -252,7 +252,7 @@ export const MeanPlugin = new PluginBuilder("system_mean_v1", "Moving Mean", "MA
             distribution: payload.distribution,
             startTime: payload.startTime,
             endTime: payload.endTime,
-            timestamp: payload.timestamp || Date.now(),
+            timestamp: payload.timestamp ?? Date.now(),
             timestamps: Array.isArray(payload.timestamps) ? payload.timestamps : undefined,
             uncertainty: outUncertainty,
           });
@@ -269,7 +269,7 @@ export const MeanPlugin = new PluginBuilder("system_mean_v1", "Moving Mean", "MA
             sourceId: outputSourceId,
             value: result.avg,
             color: currentOutputColor,
-            timestamp: payload.timestamp || Date.now(),
+            timestamp: payload.timestamp ?? Date.now(),
             uncertainty: outUncertainty,
           });
         }

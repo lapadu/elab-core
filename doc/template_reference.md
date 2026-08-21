@@ -65,7 +65,7 @@ export const ExampleTemplate = {
 
 ## Overview
 
-- Defined templates: 15
+- Defined templates: 17
 - Template references: 18
 - Unknown references: 0
 
@@ -78,12 +78,14 @@ export const ExampleTemplate = {
 | `system_pulse_gen` | Pulse Generator UI | `PulseGenTemplate` | PluginBuilder | `elab_workbench/src/plugins/PulseGenerator.jsx` | 2 |
 | `system_sine_gen` | Sine Generator UI | `SinusGenTemplate` | PluginBuilder | `elab_workbench/src/plugins/SinusGenerator.jsx` | 2 |
 | `tpl_device_config` | Device Configuration | `DeviceConfigPlugin` | Object | `elab_workbench/src/plugins/core/templates/DeviceConfigWidget.jsx` | 0 |
+| `tpl_device_scanner_config` | Device Scanner Config | `DeviceScannerConfigPlugin` | Object | `elab_workbench/src/plugins/core/templates/DeviceScannerConfigWidget.jsx` | 0 |
 | `tpl_generic_actuator` | Generic Actuator Control | `GenericActuatorTemplate` | Object | `elab_workbench/src/plugins/core/templates/GenericActuatorWidget.jsx` | 0 |
 | `tpl_generic_control` | Generic Control | `GenericControlTemplate` | Object | `elab_workbench/src/plugins/core/templates/GenericControlWidget.jsx` | 0 |
 | `tpl_generic_generator` | Generic Generator | `GenericGeneratorTemplate` | Object | `elab_workbench/src/plugins/core/templates/GenericGeneratorWidget.jsx` | 0 |
 | `tpl_generic_math` | Generic Math | `GenericMathPlugin` | Object | `elab_workbench/src/plugins/core/templates/GenericMathWidget.jsx` | 0 |
 | `tpl_generic_sensor` | Generic Sensor Display | `GenericSensorTemplate` | Object | `elab_workbench/src/plugins/core/templates/GenericSensorWidget.jsx` | 0 |
 | `tpl_metric` | Metric Display | `MetricPlugin` | Object | `elab_workbench/src/plugins/core/templates/MetricWidget.jsx` | 3 |
+| `tpl_metric_trend` | Metric Trend Display | `MetricTrendPlugin` | Object | `elab_workbench/src/plugins/core/templates/MetricTrendWidget.jsx` | 0 |
 | `tpl_scope` | Scope Graph | `ScopeGraphPlugin` | Object | `elab_workbench/src/plugins/core/templates/ScopeWidget.jsx` | 2 |
 | `tpl_spectrum` | Spectrum Graph | `SpectrumGraphPlugin` | Object | `elab_workbench/src/plugins/core/templates/SpectrumWidget.jsx` | 2 |
 | `tpl_spectrum_config` | Spectrum Config | `SpectrumConfigPlugin` | Object | `elab_workbench/src/plugins/core/templates/SpectrumConfigWidget.jsx` | 1 |
@@ -116,11 +118,13 @@ export const ExampleTemplate = {
 
 - `elab_workbench/src/plugins/core/templates/ChannelMenu.jsx`
 - `elab_workbench/src/plugins/core/templates/DeviceConfigWidget.jsx`
+- `elab_workbench/src/plugins/core/templates/DeviceScannerConfigWidget.jsx`
 - `elab_workbench/src/plugins/core/templates/GenericActuatorWidget.jsx`
 - `elab_workbench/src/plugins/core/templates/GenericControlWidget.jsx`
 - `elab_workbench/src/plugins/core/templates/GenericGeneratorWidget.jsx`
 - `elab_workbench/src/plugins/core/templates/GenericMathWidget.jsx`
 - `elab_workbench/src/plugins/core/templates/GenericSensorWidget.jsx`
+- `elab_workbench/src/plugins/core/templates/MetricTrendWidget.jsx`
 - `elab_workbench/src/plugins/core/templates/MetricWidget.jsx`
 - `elab_workbench/src/plugins/core/templates/ScopeWidget.jsx`
 - `elab_workbench/src/plugins/core/templates/SpectrumConfigWidget.jsx`

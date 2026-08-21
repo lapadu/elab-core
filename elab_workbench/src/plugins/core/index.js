@@ -6,3 +6,5 @@ export * from "./templates/ScopeWidget";
 export * from "./templates/SpectrumWidget";
 export * from "./templates/MetricWidget";
 export * from "./templates/DeviceConfigWidget";
+export * from "./templates/MetricTrendWidget";
+export * from "./templates/DeviceScannerConfigWidget";

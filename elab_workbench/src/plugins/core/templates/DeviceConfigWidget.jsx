@@ -10,7 +10,7 @@ import dispatcher from "../../../services/DispatcherClient";
 // ==========================================
 const DeviceConfigWidget = ({ task, onUpdateTask }) => {
   const configFields = task.config?.configFields || [];
-  const providerId = task.providerId || task.config?.providerId || task.originalId || task.id;
+  const providerId = task.originalId || task.id;
 
   // Local state for editable values.
   const [values, setValues] = useState(() => {

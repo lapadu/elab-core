@@ -63,6 +63,48 @@ describe('slotReducer – extended coverage', () => {
     })
   })
 
+  describe('recorded vs. live task identity', () => {
+    const liveTask = { id: 'sensor_1', groupId: 'scope', type: 'SENSOR' }
+    const recordedTask = {
+      id: 'rec_sensor_1',
+      originalId: 'sensor_1',
+      groupId: 'scope',
+      type: 'SENSOR',
+      is_recorded: true,
+    }
+
+    it('keeps separate instances for a recording and its live source', () => {
+      let s = slotReducer(initialSlotState, { type: 'DROP_TASK', index: 0, baseTask: liveTask, cache })
+      s = slotReducer(s, { type: 'DROP_TASK', index: 1, baseTask: recordedTask, cache })
+
+      expect(s[0].id).toBe('sensor_1')
+      expect(s[0].is_recorded).toBeFalsy()
+      expect(s[1].id).toBe('rec_sensor_1')
+      expect(s[1].is_recorded).toBe(true)
+      expect(s[1]).not.toBe(s[0])
+    })
+
+    it('does not evict the live cache entry when the recording is removed', () => {
+      let s = slotReducer(initialSlotState, { type: 'DROP_TASK', index: 0, baseTask: liveTask, cache })
+      s = slotReducer(s, { type: 'DROP_TASK', index: 1, baseTask: recordedTask, cache })
+      s = slotReducer(s, { type: 'REMOVE_TASK', index: 1, cache })
+
+      expect(cache.has('sensor_1')).toBe(true)
+      expect(cache.has('rec_sensor_1')).toBe(false)
+      expect(s[0].id).toBe('sensor_1')
+    })
+
+    it('REBIND_PROVIDER leaves recorded tasks untouched', () => {
+      let s = slotReducer(initialSlotState, { type: 'DROP_TASK', index: 0, baseTask: recordedTask, cache })
+      s = slotReducer(s, {
+        type: 'REBIND_PROVIDER',
+        providers: [{ id: 'prov-new', tasks: [{ id: 'sensor_1', groupId: 'scope' }] }],
+        cache,
+      })
+      expect(s[0].id).toBe('rec_sensor_1')
+    })
+  })
+
   describe('REBIND_PROVIDER', () => {
     it('updates task when provider reconnects with new ID', () => {
       const baseTask = { id: 'task-1', groupId: 'freq_counter', providerId: 'old-prov', type: 'SENSOR' }

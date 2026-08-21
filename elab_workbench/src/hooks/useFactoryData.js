@@ -8,6 +8,7 @@ export const useFactoryData = (task, plugin) => {
   const pluginRef     = useRef(plugin);
   const taskType      = task?.type;
   const isVirtual     = task?.virtual === true;
+  const isRecorded    = task?.is_recorded === true;
   const taskId        = task?.id;
   const originalId    = task?.originalId;
   const factoryKey    = originalId || taskId;
@@ -25,7 +26,9 @@ export const useFactoryData = (task, plugin) => {
       }
     };
 
-    if (!task || !isVirtual || taskType === 'HARDWARE' || !pluginRef.current) {
+    // Recorded tasks are flagged virtual as well, but the replayer is their
+    // only data source - a live factory would mix simulated data in.
+    if (!task || !isVirtual || isRecorded || taskType === 'HARDWARE' || !pluginRef.current) {
       return;
     }
 

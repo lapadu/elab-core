@@ -68,7 +68,7 @@ classDiagram
         }
         
         class DispatcherApp {
-            <<Flask & SocketIO>>
+            <<Conceptual: app.py + sockets.py>>
             -SystemState state
             -SessionRecorder recorder
             -SessionReplayer replayer
@@ -189,6 +189,21 @@ The backend is a `Flask` application with `Flask-SocketIO` for real-time communi
 - **`SessionRecorder`**: When a recording is started, this service writes all relevant events (new providers, data packets, commands) to a `session.sqlite` database.
 - **`SessionReplayer`**: This service can load a `session.sqlite` file and replay the stored events with correct timing. To the frontend, it appears as if the recorded devices are connected live.
 - **`ClientProcessManager`**: A helper service that can start and stop external Python scripts (acting as E-Lab clients) as separate processes.
+
+#### Session file layout (`session.sqlite`)
+
+| Table | Purpose |
+|---|---|
+| `session_log` | The recorded events (`event_time_ms`, `source_id`, `type`, `payload`, `binary_data`). |
+| `manifests` | Provider manifests of the tasks that were active when recording started. |
+| `session_meta` | Key/value metadata: `schema_version`, `origin` (`recorded`/`composed`), `created_at_ms`, `session_start_ms`, `session_end_ms`. |
+| `session_sources` | Per source: `time_source` (`device` = the device sent absolute epoch times, `server` = the dispatcher anchored a device-local clock) and `first_seen_ms`. |
+
+`session_meta` is the authoritative time span — a composed session (tracks
+aligned from several recordings) cannot derive it from its log alone. Readers
+fall back to `MIN/MAX(event_time_ms)` for recordings written before
+`schema_version` 1. `session_sources.time_source` states how precisely tracks
+from different sessions can be aligned to each other.
 
 ### Frontend (React)
 

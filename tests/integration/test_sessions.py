@@ -89,6 +89,63 @@ class TestSessionRecording:
 
         provider_client.disconnect()
 
+    def test_session_metadata_and_time_source_recorded(
+        self, client, state, recorder, session_dir
+    ):
+        """A recording must persist its own time span and per-source time quality."""
+        from elab_server.app import app, socketio
+
+        provider_client = socketio.test_client(app)
+        provider_client.emit('register_provider', copy.deepcopy(VALID_MANIFEST))
+
+        client.emit('register_client', {'client_type': 'ui'})
+        client.get_received()
+        client.emit('task_assigned', {'slot': 0, 'taskId': 'test_task_1'})
+
+        client.emit('session_start', {'session_id': 'test_meta'})
+        received = client.get_received()
+        actual_session_id = [
+            r for r in received if r['name'] == 'session_start_result'
+        ][0]['args'][0]['session_id']
+
+        # Device-local clock (millis()) -> the dispatcher has to anchor it.
+        for i in range(5):
+            provider_client.emit('data_stream', {
+                'sourceId': 'test_task_1',
+                'value': float(i),
+                'timestamp': 1000.0 + i,
+            })
+
+        time.sleep(0.8)
+        client.emit('session_stop', {})
+        client.get_received()
+
+        conn = sqlite3.connect(str(session_dir / actual_session_id / 'session.sqlite'))
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT key, value FROM session_meta")
+        meta = dict(cursor.fetchall())
+        assert meta['origin'] == 'recorded'
+        assert meta['schema_version'] == '1'
+        start_ms = float(meta['session_start_ms'])
+        end_ms = float(meta['session_end_ms'])
+        assert end_ms >= start_ms
+
+        cursor.execute(
+            "SELECT MIN(event_time_ms), MAX(event_time_ms) FROM session_log "
+            "WHERE type = 'DATA_STREAM'"
+        )
+        log_min, log_max = cursor.fetchone()
+        assert start_ms == log_min
+        assert end_ms == log_max
+
+        cursor.execute(
+            "SELECT time_source FROM session_sources WHERE source_id = 'test_task_1'")
+        assert cursor.fetchone()[0] == 'server'
+        conn.close()
+
+        provider_client.disconnect()
+
     def test_session_stop_without_start(self, client, state, session_dir):
         """session_stop when no session is active should return error."""
         client.emit('session_stop', {})

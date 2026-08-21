@@ -25,6 +25,36 @@ _MAX_VALID_MS = 4_102_444_800_000
 # real defence in depth.
 _SESSION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
+# Amount of recorded history replayed right before a new seek position so a
+# paused/scrubbing UI immediately shows data instead of an empty widget.
+_SEEK_PREROLL_MS = 2000.0
+
+
+def _read_time_bounds(cur):
+    """Return the session's (start_ms, end_ms).
+
+    ``session_meta`` is authoritative because a composed session cannot derive
+    its span from the log alone. Older recordings without that table fall back
+    to the min/max of the log.
+    """
+    try:
+        cur.execute(
+            "SELECT key, value FROM session_meta "
+            "WHERE key IN ('session_start_ms', 'session_end_ms')"
+        )
+        meta = dict(cur.fetchall())
+        if 'session_start_ms' in meta and 'session_end_ms' in meta:
+            return meta['session_start_ms'], meta['session_end_ms']
+    except sqlite3.Error:
+        pass  # No session_meta table: pre-schema-1 recording.
+
+    cur.execute(
+        "SELECT MIN(event_time_ms), MAX(event_time_ms) FROM session_log "
+        "WHERE type = 'DATA_STREAM'"
+    )
+    res = cur.fetchone()
+    return (res[0], res[1]) if res else (None, None)
+
 class SessionReplayer(threading.Thread):  # pylint: disable=too-many-instance-attributes
     """A class to replay recorded sessions."""
     def __init__(self, socketio):
@@ -70,11 +100,7 @@ class SessionReplayer(threading.Thread):  # pylint: disable=too-many-instance-at
             with closing(sqlite3.connect(path)) as conn:
                 conn.execute("PRAGMA journal_mode=WAL;")
                 cur = conn.cursor()
-                cur.execute(
-                    "SELECT MIN(event_time_ms), MAX(event_time_ms) FROM session_log WHERE type = 'DATA_STREAM'")
-                res = cur.fetchone()
-            start_raw = res[0] if res else None
-            end_raw = res[1] if res else None
+                start_raw, end_raw = _read_time_bounds(cur)
         except sqlite3.Error as e:
             logger.error(
                 "Failed to read session metadata from %s: %s", session_id, e)
@@ -123,6 +149,76 @@ class SessionReplayer(threading.Thread):  # pylint: disable=too-many-instance-at
         with self.queue_lock:
             self.command_queue.append((action, value))
 
+    def _emit_reset(self, time_ms):
+        """Tell UIs to drop buffered replay data before a position jump.
+
+        Stop, seek and the automatic rewind on play move the cursor
+        discontinuously. Without an explicit reset the widgets would splice
+        the new segment onto stale samples of the old position.
+        """
+        self.socketio.emit(
+            'replay_reset',
+            {'time_ms': time_ms, 'duration': self.session_duration_ms},
+            room='ui_clients',
+        )
+
+    def _emit_range(self, cursor, rel_start, rel_end):
+        """Emit recorded events of the session window ``[rel_start, rel_end)``.
+
+        Recordings are stored with absolute epoch timestamps, so playback first
+        makes them session-relative and then shifts them onto the wall clock:
+        ``rel_end`` maps to "now". A replay therefore behaves like a source that
+        is producing right now and can be charted next to live signals, while
+        the recording itself stays independent of when it was made.
+        """
+        offset = (time.time() * 1000.0 - rel_end) - self.session_start_ms
+
+        query = """
+            SELECT payload, binary_data FROM session_log
+            WHERE event_time_ms >= ? AND event_time_ms < ?
+            ORDER BY event_time_ms ASC, seq ASC
+        """
+        cursor.execute(
+            query,
+            (self.session_start_ms + rel_start, self.session_start_ms + rel_end),
+        )
+
+        for row in cursor.fetchall():
+            payload_str = row[0]
+            binary_blob = row[1]
+
+            event_data = json.loads(payload_str)
+
+            if binary_blob:
+                try:
+                    b64_str = base64.b64encode(binary_blob).decode('utf-8')
+                    event_data['payload']['image_b64'] = f"data:image/jpeg;base64,{b64_str}"
+                except (TypeError, ValueError) as e:
+                    logger.error("Replay Image Error: %s", e)
+
+            if event_data.get('type') != 'DATA_STREAM':
+                continue
+
+            replayed_payload = event_data['payload']
+
+            for key in ('startTime', 'endTime', 'timestamp'):
+                if key in replayed_payload:
+                    replayed_payload[key] = float(replayed_payload[key]) + offset
+            if isinstance(replayed_payload.get('timestamps'), list):
+                replayed_payload['timestamps'] = [
+                    float(t) + offset for t in replayed_payload['timestamps']
+                ]
+
+            original_source_id = replayed_payload.get('sourceId')
+            if original_source_id:
+                replayed_payload['sourceId'] = f"rec_{original_source_id}"
+                replayed_payload['originalSourceId'] = original_source_id
+            # Carried inside the payload (not the log wrapper) so the UI can
+            # keep replay samples out of live buffers.
+            replayed_payload['_is_replay'] = True
+
+            self.socketio.emit('data_stream', replayed_payload, room='ui_clients')
+
     def run(self):  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         """The main loop of the replayer."""
         conn = None
@@ -166,10 +262,13 @@ class SessionReplayer(threading.Thread):  # pylint: disable=too-many-instance-at
                         self.paused = True
                         self.current_replay_ms = 0
                         self.last_wall_clock = time.time()
+                        self._emit_reset(0)
                         self.socketio.emit(
-                            'replay_progress', {'time_ms': 0}, room='ui_clients')
+                            'replay_progress',
+                            {'time_ms': 0, 'duration': self.session_duration_ms},
+                            room='ui_clients')
                         self.socketio.emit(
-                            'replay_status', {'state': 'paused'}, room='ui_clients')
+                            'replay_status', {'state': 'stopped'}, room='ui_clients')
 
                     elif cmd == 'pause':
                         self.paused = True
@@ -179,6 +278,17 @@ class SessionReplayer(threading.Thread):  # pylint: disable=too-many-instance-at
                             room='ui_clients',
                         )
                     elif cmd == 'play':
+                        # Restart from the top when the cursor already sits at
+                        # the end, otherwise play would be a no-op forever.
+                        if (self.session_duration_ms > 0
+                                and self.current_replay_ms >= self.session_duration_ms):
+                            self.current_replay_ms = 0
+                            self._emit_reset(0)
+                            self.socketio.emit(
+                                'replay_progress',
+                                {'time_ms': 0, 'duration': self.session_duration_ms},
+                                room='ui_clients',
+                            )
                         self.paused = False
                         self.last_wall_clock = time.time()
                         self.socketio.emit(
@@ -198,6 +308,12 @@ class SessionReplayer(threading.Thread):  # pylint: disable=too-many-instance-at
                         seek_ms = max(0.0, min(seek_ms, float(self.session_duration_ms)))
                         self.current_replay_ms = seek_ms
                         self.last_wall_clock = time.time()
+                        self._emit_reset(seek_ms)
+                        try:
+                            preroll_start = max(0.0, seek_ms - _SEEK_PREROLL_MS)
+                            self._emit_range(cursor, preroll_start, seek_ms)
+                        except sqlite3.Error as e:
+                            logger.error("Replayer seek preroll failed: %s", e)
                         self.socketio.emit(
                             'replay_progress',
                             {'time_ms': self.current_replay_ms,
@@ -236,62 +352,9 @@ class SessionReplayer(threading.Thread):  # pylint: disable=too-many-instance-at
 
             next_replay_ms = self.current_replay_ms + dt
 
-            abs_start = self.session_start_ms + self.current_replay_ms
-            abs_end = self.session_start_ms + next_replay_ms
             try:
-                query = """
-                    SELECT payload, binary_data FROM session_log
-                    WHERE event_time_ms >= ? AND event_time_ms < ?
-                    ORDER BY event_time_ms ASC, seq ASC
-                """
                 assert cursor is not None  # guaranteed: cursor is set when conn is not None
-                cursor.execute(query, (abs_start, abs_end))
-
-                for row in cursor.fetchall():
-                    payload_str = row[0]
-                    binary_blob = row[1]
-
-                    event_data = json.loads(payload_str)
-                    event_data['_is_replay'] = True
-
-                    if binary_blob:
-                        try:
-                            b64_str = base64.b64encode(
-                                binary_blob).decode('utf-8')
-                            event_data['payload']['image_b64'] = f"data:image/jpeg;base64,{b64_str}"
-                        except (TypeError, ValueError) as e:
-                            logger.error("Replay Image Error: %s", e)
-
-                    if event_data.get('type') == 'DATA_STREAM':
-                        replayed_payload = event_data['payload']
-
-                        # Normalize replay stream times so session start is at t=0 ms.
-                        if 'startTime' in replayed_payload:
-                            replayed_payload['startTime'] = max(
-                                0.0,
-                                float(replayed_payload['startTime']) - float(self.session_start_ms),
-                            )
-                        if 'endTime' in replayed_payload:
-                            replayed_payload['endTime'] = max(
-                                0.0,
-                                float(replayed_payload['endTime']) - float(self.session_start_ms),
-                            )
-                        if 'timestamp' in replayed_payload:
-                            replayed_payload['timestamp'] = max(
-                                0.0,
-                                float(replayed_payload['timestamp']) - float(self.session_start_ms),
-                            )
-                        if isinstance(replayed_payload.get('timestamps'), list):
-                            replayed_payload['timestamps'] = [
-                                max(0.0, float(t) - float(self.session_start_ms))
-                                for t in replayed_payload['timestamps']
-                            ]
-
-                        original_source_id = replayed_payload.get('sourceId')
-                        if original_source_id:
-                            replayed_payload['sourceId'] = f"rec_{original_source_id}"
-                        self.socketio.emit(
-                            'data_stream', replayed_payload, room='ui_clients')
+                self._emit_range(cursor, self.current_replay_ms, next_replay_ms)
 
                 self.current_replay_ms = next_replay_ms
                 self.socketio.emit('replay_progress', {'time_ms': self.current_replay_ms,
