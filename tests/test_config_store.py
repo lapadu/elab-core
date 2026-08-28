@@ -93,3 +93,16 @@ class TestConfigStore:
         assert config["alias"] == "Persistent"
         assert config["color"] == "#aabbcc"
         s2.close()
+
+    def test_metric_persists_across_reopen(self, tmp_path):
+        """Server metrics survive closing and reopening the store."""
+        db_path = os.path.join(str(tmp_path), "metric_test.sqlite")
+        s1 = ConfigStore(db_path=db_path)
+        assert s1.increment_metric("page_views") == 1
+        assert s1.increment_metric("page_views", 2) == 3
+        s1.close()
+
+        s2 = ConfigStore(db_path=db_path)
+        assert s2.get_metric("page_views") == 3
+        s2.close()
+

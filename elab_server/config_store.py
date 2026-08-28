@@ -72,6 +72,13 @@ class ConfigStore:
                     notes TEXT
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS server_metrics (
+                    metric_key TEXT PRIMARY KEY,
+                    metric_value INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+            conn.execute("DROP TABLE IF EXISTS visitor_ids")
             conn.commit()
         except sqlite3.Error:
             logger.exception("ConfigStore: failed to initialise database at %s", self._db_path)
@@ -173,6 +180,33 @@ class ConfigStore:
             if entry:
                 result[task_id] = entry
         return result
+
+    def get_metric(self, metric_key: str) -> int:
+        """Return a persistent server metric, or zero when it is not set."""
+        with self._lock:
+            row = self._require_conn().execute(
+                "SELECT metric_value FROM server_metrics WHERE metric_key = ?",
+                (metric_key,),
+            ).fetchone()
+        return int(row[0]) if row is not None else 0
+
+    def increment_metric(self, metric_key: str, amount: int = 1) -> int:
+        """Increment and return a persistent server metric atomically."""
+        with self._lock:
+            conn = self._require_conn()
+            conn.execute(
+                """INSERT INTO server_metrics (metric_key, metric_value)
+                   VALUES (?, ?)
+                   ON CONFLICT(metric_key) DO UPDATE SET
+                       metric_value = metric_value + excluded.metric_value""",
+                (metric_key, amount),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT metric_value FROM server_metrics WHERE metric_key = ?",
+                (metric_key,),
+            ).fetchone()
+        return int(row[0])
 
     def close(self) -> None:
         """Close the database connection."""

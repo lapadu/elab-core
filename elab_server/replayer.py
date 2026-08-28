@@ -23,7 +23,7 @@ _MAX_VALID_MS = 4_102_444_800_000
 # path separators, ``..`` traversal and absolute paths before the value
 # reaches ``os.path.join``; the realpath containment check below is the
 # real defence in depth.
-_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,127}$")
 
 # Amount of recorded history replayed right before a new seek position so a
 # paused/scrubbing UI immediately shows data instead of an empty widget.

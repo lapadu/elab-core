@@ -529,13 +529,13 @@ export default function App() {
     const getLayoutConfig = () => {
       switch (layout) {
         case 'grid-2x2':
-          return { slots: [0, 1, 2, 3], gridClass: 'grid grid-cols-2 grid-rows-2' };
+          return { slots: [0, 1, 2, 3], gridClass: 'grid grid-cols-1 md:grid-cols-2 grid-rows-4 md:grid-rows-2' };
         case 'grid-pro':
-          return { slots: [0, 1, 2, 3, 4, 5], gridClass: 'grid grid-cols-2 md:grid-cols-3 grid-rows-3 md:grid-rows-2' };
+          return { slots: [0, 1, 2, 3, 4, 5], gridClass: 'grid grid-cols-1 md:grid-cols-3 grid-rows-6 md:grid-rows-2' };
         case 'grid-5x1':
           return { slots: [0, 1, 2, 3, 4, 5], gridClass: 'grid-5x1-layout' };
         default:
-          return { slots: [0, 1, 2, 3], gridClass: 'grid grid-cols-2 grid-rows-2' };
+          return { slots: [0, 1, 2, 3], gridClass: 'grid grid-cols-1 md:grid-cols-2 grid-rows-4 md:grid-rows-2' };
       }
     };
     const { slots: activeSlots, gridClass } = getLayoutConfig();

@@ -75,7 +75,7 @@ const WidgetMenuPanel = ({ task, onUpdateTask, viewRenderers, activeRenderer, re
         </button>
 
         {showInfo && (
-          <div className="bg-slate-950 border border-slate-800 rounded-lg p-3 font-mono text-[11px] text-slate-400 space-y-1">
+          <div className="select-text bg-slate-950 border border-slate-800 rounded-lg p-3 font-mono text-[11px] text-slate-400 space-y-1">
             <div><span className="text-slate-500">Name:</span> {task.name}</div>
             <div><span className="text-slate-500">Type:</span> {task.type}</div>
             <div><span className="text-slate-500">Plugin:</span> {task.groupId}</div>

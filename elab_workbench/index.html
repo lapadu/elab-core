@@ -2,39 +2,94 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/logo.svg" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="256x256" />
+    <link rel="mask-icon" href="/favicon.svg" color="#06b6d4" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="E-Lab" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>E-Lab | Echtzeit-IoT-Messlabor &amp; Hardware-Dispatcher</title>
+    <title>E-Lab | Real-Time IoT Measurement Lab &amp; Hardware Dispatcher</title>
     
     <!-- SEO Meta Tags -->
-    <meta name="description" content="Turn your hardware into a portable web lab. e-Lab connects sensors, oscilloscopes, and ESP32 projects to a modular workbench for real-time monitoring." />
+    <meta name="description" content="E-Lab is a distributed IoT measurement lab that connects sensors, oscilloscopes, and ESP32 projects to a modular real-time workbench." />
     <meta name="robots" content="index, follow" />
-    <meta name="keywords" content="E-Lab, IoT, Messlabor, Hardware, Dispatcher, Echtzeit, Sensor, Aktor, Zero-Config, UDP Discovery" />
+    <meta name="keywords" content="E-Lab, IoT measurement lab, hardware dispatcher, real-time sensors, ESP32, oscilloscope, WebSocket, UDP discovery, Messlabor, Echtzeitmessung" />
     <meta name="author" content="E-Lab Team" />
+    <meta name="theme-color" content="#0f172a" />
     <link rel="canonical" href="https://www.e-lab.app/" />
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://www.e-lab.app/" />
-    <meta property="og:title" content="E-Lab | Verteiltes IoT-Messlabor &amp; Hardware-Dispatcher" />
-    <meta property="og:description" content="Turn your hardware into a portable web lab. e-Lab connects sensors, oscilloscopes, and ESP32 projects to a modular workbench for real-time monitoring." />
+    <meta property="og:title" content="E-Lab | Real-Time IoT Measurement Lab &amp; Hardware Dispatcher" />
+    <meta property="og:description" content="Connect sensors, oscilloscopes, and ESP32 projects to a modular workbench for real-time measurement data." />
     <meta property="og:image" content="https://www.e-lab.app/logo.svg" />
+    <meta property="og:image:alt" content="E-Lab real-time measurement workbench" />
     <meta property="og:site_name" content="E-Lab" />
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image" />
     <meta property="twitter:url" content="https://www.e-lab.app/" />
-    <meta property="twitter:title" content="E-Lab | Verteiltes IoT-Messlabor &amp; Hardware-Dispatcher" />
-    <meta property="twitter:description" content="Turn your hardware into a portable web lab. e-Lab connects sensors, oscilloscopes, and ESP32 projects to a modular workbench for real-time monitoring." />
+    <meta name="twitter:title" content="E-Lab | Real-Time IoT Measurement Lab &amp; Hardware Dispatcher" />
+    <meta name="twitter:description" content="Connect sensors, oscilloscopes, and ESP32 projects to a modular workbench for real-time measurement data." />
+    <meta name="twitter:image:alt" content="E-Lab real-time measurement workbench" />
     <meta property="twitter:image" content="https://www.e-lab.app/logo.svg" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "E-Lab",
+        "applicationCategory": "EngineeringApplication",
+        "operatingSystem": "Web, Windows, Linux",
+        "url": "https://www.e-lab.app/",
+        "description": "A distributed IoT measurement lab connecting sensors, oscilloscopes, and ESP32 projects to a real-time web workbench.",
+        "keywords": "IoT, ESP32 Arduino, hardware monitoring, real-time measurement, Python backend, React frontend, WebSocket, distributed application",
+        "codeRepository": "https://github.com/lapadu/elab-core",
+        "sameAs": [
+          "https://github.com/lapadu/elab-core"
+        ],
+        "image": "https://www.e-lab.app/logo.svg",
+        "author": {
+          "@type": "Organization",
+          "name": "E-Lab Team",
+          "url": "https://www.e-lab.app/"
+        }
+      }
+    </script>
   </head>
   <body>
+    <noscript>
+      <main>
+        <h1>E-Lab: Real-Time IoT Measurement Lab</h1>
+        <p>
+          E-Lab connects sensors, oscilloscopes, actuators, and ESP32 projects to a modular
+          browser-based workbench for live measurement data.
+        </p>
+        <p>
+          The project combines a decoupled Python backend with a React frontend for flexible
+          hardware monitoring and control.
+        </p>
+        <h2>Features</h2>
+        <ul>
+          <li>Real-time sensor data over WebSockets</li>
+          <li>Zero-configuration device discovery over UDP</li>
+          <li>Session recording, replay, and FFT analysis</li>
+          <li>Python and ESP32 client integrations</li>
+        </ul>
+        <p lang="de">
+          Deutsch: E-Lab ist ein verteiltes IoT-Messlabor für Echtzeit-Sensordaten,
+          ESP32-Projekte und modulare Hardware-Überwachung.
+        </p>
+        <p>
+          <a href="https://github.com/lapadu/elab-core">View the E-Lab source code on GitHub</a>
+        </p>
+      </main>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

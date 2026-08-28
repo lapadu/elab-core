@@ -5,9 +5,11 @@ import os
 import secrets
 import socket
 import time
+from typing import Optional
 from flask import Flask, send_from_directory
 from flask_socketio import SocketIO
 from .config import REACT_BUILD_DIR
+from .config_store import ConfigStore
 from ._version import __version__ as ELAB_VERSION
 
 logger = logging.getLogger(__name__)
@@ -65,6 +67,9 @@ if SERVE_FRONTEND:
         """Serves the index.html file."""
         index_path = os.path.join(REACT_BUILD_DIR, "index.html")
         if os.path.exists(index_path):
+            config_store = app.config.get('CONFIG_STORE')
+            if config_store is not None:
+                config_store.increment_metric('page_views')
             return send_from_directory(REACT_BUILD_DIR, 'index.html')
         return f"Build not found: {REACT_BUILD_DIR}<br>Please run 'npm run build'!", 404
 
@@ -81,8 +86,9 @@ else:
         """Returns API info when frontend serving is disabled."""
         return "<h1>E-Lab Dispatcher Mode</h1><p>Frontend serving is disabled (-d flag active).</p>"
 
-def register_routes(state):
+def register_routes(state, config_store: Optional[ConfigStore] = None):
     """Registers the API routes."""
+    app.config['CONFIG_STORE'] = config_store
     @app.route('/api/health')
     def health_check():
         """Returns the health status of the server.
@@ -99,6 +105,12 @@ def register_routes(state):
             'session_id': state.current_session_id,
             'uptime': time.time(),
         }
+
+    @app.route('/api/visitors')
+    def visitor_count():
+        """Returns the number of page views since the counter was created."""
+        store = app.config.get('CONFIG_STORE')
+        return {'visitors': store.get_metric('page_views') if store is not None else 0}
 
     @app.route('/api/providers')
     def get_providers():

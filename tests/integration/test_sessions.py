@@ -273,6 +273,19 @@ class TestReplay:
         assert data['session_id'] == 'replay_test'
         assert data['duration'] > 0
 
+    def test_replay_load_accepts_spaces_in_session_id(self, client, state, session_dir):
+        """replay_load should accept recorder-created names containing spaces."""
+        session_id = 'replay test'
+        self._create_session_with_data(session_dir, session_id)
+
+        client.emit('replay_load', {'session_id': session_id})
+        received = client.get_received()
+        load_events = [r for r in received if r['name'] == 'replay_loaded']
+        assert len(load_events) == 1
+        data = load_events[0]['args'][0]
+        assert data['success'] is True
+        assert data['session_id'] == session_id
+
     def test_replay_load_nonexistent(self, client, state, session_dir):
         """replay_load for a nonexistent session should return failure."""
         client.emit('replay_load', {'session_id': 'does_not_exist'})

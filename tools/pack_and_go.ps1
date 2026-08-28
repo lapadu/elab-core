@@ -30,12 +30,12 @@ try {
     }
     
     Write-Host "Running npm install..." -ForegroundColor DarkCyan
-    & npm install --no-audit --no-fund
+    & npm.cmd install --no-audit --no-fund
     if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
     
     Write-Host "Running npm run build..." -ForegroundColor DarkCyan
     $env:VITE_BASE = $AppBase
-    & npm run build
+    & npm.cmd run build
     $env:VITE_BASE = $null
     if ($LASTEXITCODE -ne 0) { throw "npm run build failed" }
 }

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { PLUGIN_REGISTRY } from '../../components/PluginRegistry.jsx';
 import { FRONTEND_DEPS, BACKEND_DEPS } from './licenseData.generated.js';
 import dispatcher from '../../services/DispatcherClient.js';
@@ -6,6 +6,16 @@ import dispatcher from '../../services/DispatcherClient.js';
 /* ── Component ──────────────────────────────────────────────────────── */
 export default function HelpView() {
   const [tab, setTab] = useState('help');
+  const [visitorCount, setVisitorCount] = useState(null);
+
+  useEffect(() => {
+    fetch('/api/visitors')
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (data && Number.isFinite(data.visitors)) setVisitorCount(data.visitors);
+      })
+      .catch(() => setVisitorCount(null));
+  }, []);
 
   // Collect help content from all registered plugins
   const pluginHelpItems = useMemo(() => {
@@ -37,6 +47,10 @@ export default function HelpView() {
       {/* Help – rendered from plugin helpContent */}
       {tab === 'help' && (
         <div className="max-w-3xl space-y-8">
+          <div className="text-sm text-gray-600 dark:text-gray-300">
+            Visitors since server start:{' '}
+            <strong>{visitorCount === null ? ' unavailable' : visitorCount}</strong>
+          </div>
           {pluginHelpItems.map((ph) => (
             <div key={ph.id}>
               <h2 className="text-lg font-bold mb-3 text-gray-700 dark:text-gray-200 flex items-center gap-2">

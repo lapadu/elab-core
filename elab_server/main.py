@@ -135,7 +135,7 @@ def main():
     # Initialization of components
     config_store = ConfigStore()
     state = SystemState(socketio, config_store=config_store)
-    register_routes(state)
+    register_routes(state, config_store=config_store)
     recorder = SessionRecorder(state, socketio)
     replayer = SessionReplayer(socketio)
     replayer.start()
