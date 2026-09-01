@@ -11,6 +11,20 @@
 #   .\deploy_update.ps1 -SshUser "lapadu"      # Use a specific SSH user (defaults to lapadu)
 #   .\deploy_update.ps1 -SshKey "C:\path\id_rsa" # Use a specific SSH private key file
 #
+# servers.json format:
+#   {
+#     "servers": [
+#       {
+#         "protocol": "http",
+#         "host": "192.168.10.10:8000",   # Process-Manager host; port defaults to 8000 if omitted
+#         "update_subpath": "",           # Prefix of the Process-Manager update API; "" = served at root
+#         "app_subpath": "ElabServer/"    # Vite base path AND target folder name under scripts/ on the Pi
+#       }
+#     ]
+#   }
+#   app_subpath also determines the ZIP name (ElabServer_v<version>.zip), from which the
+#   Process Manager derives the project folder. "/" would yield the folder "ELab".
+#
 param(
     [string]$Version = '',
     [string]$ServerList = 'servers.json',

@@ -74,8 +74,5 @@ sessions
 # Coverage
 test-results
 
-# Server config
-servers.json
-
 # Deployment
 deploy/

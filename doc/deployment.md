@@ -93,6 +93,8 @@ User=elab
 Group=elab
 WorkingDirectory=/opt/elab
 Environment=PYTHONUNBUFFERED=1
+# Optional: trusted plugin script origins (comma-separated; also configurable via CLI)
+# Environment=ELAB_PLUGIN_ORIGINS=http://192.168.1.50:8080,http://internal-cdn:*
 ExecStart=/opt/elab/.venv/bin/python /opt/elab/server.py
 Restart=on-failure
 RestartSec=5
@@ -126,6 +128,24 @@ sudo systemctl enable --now elab.service
 sudo systemctl status elab.service
 journalctl -u elab.service -f       # Live logs
 ```
+
+### Plugin Script Origins (Security)
+
+Trusted plugin origins can be configured two ways:
+
+**Option 1: Environment variable** (recommended for systemd)
+```ini
+# In /etc/systemd/system/elab.service [Service] section:
+Environment=ELAB_PLUGIN_ORIGINS=http://192.168.1.50:8080,http://internal-cdn:*
+```
+
+**Option 2: CLI argument** (useful for development or when the service wrapper doesn't support `Environment=`)
+```bash
+ExecStart=/opt/elab/.venv/bin/python /opt/elab/server.py --plugin-origins "http://192.168.1.50:8080,http://internal-cdn:*"
+```
+
+Both sources are merged at startup. Format: `scheme://host[:port]` or `scheme://host:*` (port wildcard).
+Origins must be trusted explicitly — the dispatcher will otherwise strip `ui.url` and `ui.integrity` from plugin manifests and fall back to generic mode.
 
 ---
 

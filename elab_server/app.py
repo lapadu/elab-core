@@ -1,12 +1,13 @@
 """This module contains the Flask app and SocketIO initialization."""
 import argparse
+import hashlib
 import logging
 import os
 import secrets
 import socket
 import time
 from typing import Optional
-from flask import Flask, send_from_directory
+from flask import Flask, request, send_from_directory
 from flask_socketio import SocketIO
 from .config import REACT_BUILD_DIR
 from .config_store import ConfigStore
@@ -14,13 +15,54 @@ from ._version import __version__ as ELAB_VERSION
 
 logger = logging.getLogger(__name__)
 
+# Session-based unique visitor tracking for the /api/visitors counter.
+# Maps a hash of (IP, User-Agent) to the timestamp it was last seen; repeat
+# visits within SESSION_TIMEOUT are not counted again as a new visitor.
+_recent_visitors: dict[str, float] = {}
+SESSION_TIMEOUT = 30 * 60  # 30 minutes
+
+
+def _is_new_visitor(remote_addr: Optional[str], user_agent: str) -> bool:
+    """Returns True if this visitor should be counted, tracking it either way.
+
+    Known bots/crawlers are never counted. Purges stale entries opportunistically
+    so ``_recent_visitors`` does not grow unbounded.
+    """
+    if 'bot' in user_agent.lower() or 'crawler' in user_agent.lower():
+        return False
+
+    visitor_hash = hashlib.sha256(f"{remote_addr}-{user_agent}".encode('utf-8')).hexdigest()
+    now = time.time()
+
+    stale = [h for h, last_seen in _recent_visitors.items() if now - last_seen > SESSION_TIMEOUT]
+    for h in stale:
+        del _recent_visitors[h]
+
+    last_seen = _recent_visitors.get(visitor_hash, 0)
+    is_new = (now - last_seen) > SESSION_TIMEOUT
+    _recent_visitors[visitor_hash] = now
+    return is_new
+
 # CLI ARGUMENTS PARSING
 parser = argparse.ArgumentParser(description='E-Lab Dispatcher Server')
 parser.add_argument('-d', '--dispatcher-only', action='store_true',
                     help='Start only the API/WebSocket server without serving the React frontend')
+parser.add_argument('--plugin-origins', default='',
+                    help='Comma-separated list of trusted plugin-script origins '
+                         '(e.g. "http://192.168.1.50:8080,http://127.0.0.1:*"). '
+                         'Merged with ELAB_PLUGIN_ORIGINS env var.')
 args, unknown = parser.parse_known_args()
 
 SERVE_FRONTEND = not args.dispatcher_only
+
+# Merge CLI --plugin-origins with env ELAB_PLUGIN_ORIGINS (CLI takes precedence).
+# Must happen before _helpers.py imports _PLUGIN_ORIGIN_ALLOWLIST from os.environ.
+if args.plugin_origins.strip():
+    existing = os.environ.get('ELAB_PLUGIN_ORIGINS', '').strip()
+    cli_origins = args.plugin_origins.strip()
+    merged = ','.join(filter(None, [existing, cli_origins]))
+    os.environ['ELAB_PLUGIN_ORIGINS'] = merged
+    logger.info("Plugin origins: %s (merged from env + CLI args)", merged)
 
 # Flask App
 static_folder_path = REACT_BUILD_DIR if SERVE_FRONTEND else None
@@ -68,7 +110,7 @@ if SERVE_FRONTEND:
         index_path = os.path.join(REACT_BUILD_DIR, "index.html")
         if os.path.exists(index_path):
             config_store = app.config.get('CONFIG_STORE')
-            if config_store is not None:
+            if config_store is not None and _is_new_visitor(request.remote_addr, request.headers.get('User-Agent', '')):
                 config_store.increment_metric('page_views')
             return send_from_directory(REACT_BUILD_DIR, 'index.html')
         return f"Build not found: {REACT_BUILD_DIR}<br>Please run 'npm run build'!", 404

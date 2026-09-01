@@ -156,7 +156,24 @@ workbench session:
 | Guard | Where | What it does |
 | --- | --- | --- |
 | **SRI** (`ui.integrity`) | Browser (`script.integrity`) | Refuses to execute the file if the bytes do not match the published hash. Prevents MITM injection on the LAN. |
-| **Origin allow-list** | Dispatcher (`ELAB_PLUGIN_ORIGINS`) | Strips `ui.url` and `ui.integrity` for any host that is neither the provider's own IP nor in the env-configured allow-list. The widget falls back to `generic` mode. |
+| **Origin allow-list** | Dispatcher (env + CLI) | Strips `ui.url` and `ui.integrity` for any host that is neither the provider's own IP nor in the allow-list. The widget falls back to `generic` mode. |
+
+The origin allow-list can be configured two ways (both are merged):
+
+**1. Environment variable** (`ELAB_PLUGIN_ORIGINS`)
+```bash
+export ELAB_PLUGIN_ORIGINS="http://192.168.1.50:8080,http://internal-cdn.lab:*"
+python server.py
+```
+
+**2. CLI argument** (`--plugin-origins`; useful for systemd/process managers)
+```bash
+python server.py --plugin-origins "http://192.168.1.50:8080,http://internal-cdn.lab:*"
+```
+
+Both sources are merged at startup. Origins must be in format `scheme://host[:port]` or `scheme://host:*` (port wildcard).
+If your plugins live on a Raspberry Pi or other single-board computer managed by a process manager (e.g. systemd),
+edit the service's `ExecStart` or use `Environment=` directives to set origins without modifying source code or requiring a restart-heavy env-var change workflow.
 
 For ESP32 clients (no horsepower for crypto), keep `ui_mode="generic"`.
 The manifest-based generic widgets handle the vast majority of
