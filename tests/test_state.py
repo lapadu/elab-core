@@ -298,6 +298,54 @@ class TestTaskConfigPersistence:
         assert task["color"] == "#abcdef"
         assert task["decimals"] == 3
 
+    def test_set_task_decimals_forwarded_to_persist_capable_device(
+        self, state_with_store, mock_socketio, config_store
+    ):
+        """Decimals follows the same device-authority rule as alias and color."""
+        manifest = {
+            "id": "prov-1", "name": "Test", "category": "HARDWARE",
+            "device": {"id": "dev-1", "model": "m", "anchor": "efuse_mac",
+                       "persistCapable": True},
+            "tasks": [{"id": "task-1", "name": "Sensor", "type": "SENSOR",
+                       "ui": {"mode": "generic"}}]
+        }
+        state_with_store.add_provider("sid-1", manifest)
+        state_with_store.set_task_decimals("task-1", 4)
+        mock_socketio.emit.assert_any_call(
+            'persist_config', {'task_id': 'task-1', 'decimals': 4}, room='sid-1'
+        )
+        assert config_store.get_task_config("task-1") == {}
+
+    def test_stored_config_records_owning_device(self, state_with_store, config_store):
+        """Dispatcher-held overrides remember which device they belong to."""
+        manifest = {
+            "id": "prov-1", "name": "Test", "category": "HARDWARE",
+            "device": {"id": "dev-1", "model": "m", "anchor": "assigned",
+                       "persistCapable": False},
+            "tasks": [{"id": "task-1", "name": "Sensor", "type": "SENSOR",
+                       "ui": {"mode": "generic"}}]
+        }
+        state_with_store.add_provider("sid-1", manifest)
+        state_with_store.set_task_alias("task-1", "Eingang Vorstufe")
+        assert config_store.delete_device_config("dev-1") == 1
+        assert config_store.get_task_config("task-1") == {}
+
+    def test_apply_stored_config_skipped_for_persist_capable_device(
+        self, state_with_store, config_store
+    ):
+        """A self-persisting device keeps the values it shipped in its manifest."""
+        config_store.set_task_alias("task-1", "Stale Alias")
+        manifest = {
+            "id": "prov-1", "name": "Test", "category": "HARDWARE",
+            "device": {"id": "dev-1", "model": "m", "anchor": "efuse_mac",
+                       "persistCapable": True},
+            "tasks": [{"id": "task-1", "name": "Sensor", "type": "SENSOR",
+                       "alias": "Eingang Endstufe", "ui": {"mode": "generic"}}]
+        }
+        state_with_store.add_provider("sid-1", manifest)
+        state_with_store.apply_stored_config(manifest)
+        assert manifest["tasks"][0]["alias"] == "Eingang Endstufe"
+
     def test_apply_stored_config_skipped_for_self_persist(self, state_with_store, config_store):
         """Stored config is NOT applied when provider self-persists."""
         config_store.set_task_alias("task-1", "Should Not Apply")
@@ -341,3 +389,132 @@ class TestTaskConfigPersistence:
         assert state_with_store._provider_persists("t1") is True
         assert state_with_store._provider_persists("t2") is False
         assert state_with_store._provider_persists("unknown") is False
+
+
+class TestDeviceIdentity:
+    """Two devices running identical firmware must stay distinguishable."""
+
+    @pytest.fixture
+    def config_store(self, tmp_path):
+        """Create an isolated ConfigStore for device configuration tests."""
+        store = ConfigStore(db_path=str(tmp_path / "device_config.sqlite"))
+        yield store
+        store.close()
+
+    @pytest.fixture
+    def state_with_store(self, mock_socketio, config_store):
+        """Create state backed by the isolated ConfigStore."""
+        return SystemState(mock_socketio, config_store=config_store)
+
+    @staticmethod
+    def _manifest(device_id, provider_suffix="adc", task_suffix="ch1"):
+        return {
+            "id": f"{device_id}_{provider_suffix}",
+            "name": "ESP32 Voltmeter",
+            "category": "HARDWARE",
+            "device": {
+                "id": device_id,
+                "model": "esp32_voltmeter",
+                "anchor": "efuse_mac",
+                "persistCapable": True,
+            },
+            "tasks": [{
+                "id": f"{device_id}_{task_suffix}",
+                "name": "CH1",
+                "type": "SENSOR",
+                "ui": {"mode": "generic"},
+            }],
+        }
+
+    def test_two_devices_same_firmware_coexist(self, state):
+        """Distinct hardware anchors yield distinct, independently routable ids."""
+        a = self._manifest("esp32_voltmeter_aabbccddeeff")
+        b = self._manifest("esp32_voltmeter_112233445566")
+        assert state.add_provider("sid-a", a)
+        assert state.add_provider("sid-b", b)
+        assert state.find_provider_sid("esp32_voltmeter_aabbccddeeff_ch1") == "sid-a"
+        assert state.find_provider_sid("esp32_voltmeter_112233445566_ch1") == "sid-b"
+        assert len(state.get_providers_list()) == 2
+
+    def test_duplicate_ids_are_reported_not_renamed(self, state):
+        """A colliding id must surface as a conflict instead of being suffixed."""
+        state.add_provider("sid-a", self._manifest("esp32_voltmeter_01"))
+        clash = self._manifest("esp32_voltmeter_01")
+        conflicts = state.find_id_conflicts("sid-b", clash)
+        assert conflicts == ["esp32_voltmeter_01_adc", "esp32_voltmeter_01_ch1"]
+        assert state.add_provider("sid-b", clash) is False
+        assert clash["id"] == "esp32_voltmeter_01_adc"
+        assert clash["tasks"][0]["id"] == "esp32_voltmeter_01_ch1"
+
+    def test_reregistration_is_not_a_conflict(self, state):
+        """The same session refreshing its own manifest is not a duplicate."""
+        manifest = self._manifest("esp32_voltmeter_01")
+        state.add_provider("sid-a", manifest)
+        assert state.find_id_conflicts("sid-a", manifest) == []
+
+    def test_task_id_may_not_shadow_a_foreign_provider_id(self, state):
+        """Ids are globally unique across both namespaces, not just within one."""
+        state.add_provider("sid-a", self._manifest("dev-a"))
+        other = self._manifest("dev-b")
+        other["tasks"][0]["id"] = "dev-a_adc"
+        assert state.add_provider("sid-b", other) is False
+        assert state.find_provider_sid("dev-a_adc") == "sid-a"
+
+    def test_duplicate_task_ids_within_one_manifest_refused(self, state):
+        """A provider cannot declare the same task twice."""
+        manifest = self._manifest("dev-a")
+        manifest["tasks"].append(dict(manifest["tasks"][0]))
+        assert state.add_provider("sid-a", manifest) is False
+
+    def test_secret_resolves_via_device_for_every_task(self, state):
+        """All providers of one device share a single pairing credential."""
+        state.add_provider("sid-a", self._manifest("dev-a"))
+        state.register_approved_secret("sid-a", "dev-a", "s3cr3t")
+        assert state.get_secret_for_source("dev-a_ch1") == "s3cr3t"
+        assert state.get_secret_for_source("dev-a_adc") == "s3cr3t"
+
+    def test_legacy_manifest_without_device_block_still_pairs(self, state):
+        """Manifests predating the device block fall back to the provider id."""
+        state.add_provider("sid-1", VALID_MANIFEST.copy())
+        state.register_approved_secret("sid-1", "prov-1", "legacy")
+        assert state.get_secret_for_source("task-1") == "legacy"
+
+    def test_forget_secret_stops_verification(self, state):
+        """Revoking a device drops its cached secret immediately."""
+        state.add_provider("sid-a", self._manifest("dev-a"))
+        state.register_approved_secret("sid-a", "dev-a", "s3cr3t")
+        state.forget_secret("dev-a")
+        assert state.get_secret_for_source("dev-a_ch1") is None
+
+    def test_find_sid_for_source_binds_stream_to_session(self, state):
+        """data_stream can be checked against the session that registered it."""
+        state.add_provider("sid-a", self._manifest("dev-a"))
+        assert state.find_sid_for_source("dev-a_ch1") == "sid-a"
+        assert state.find_sid_for_source("unknown") is None
+
+    def test_device_name_is_cached_for_non_persistent_device(self, state_with_store, config_store):
+        """The dispatcher stores names for devices without local persistence."""
+        manifest = self._manifest("dev-a")
+        manifest["device"]["persistCapable"] = False
+        state_with_store.add_provider("sid-a", manifest)
+        assert state_with_store.set_device_name("dev-a", "Eingang Vorstufe")
+        assert config_store.get_device_config("dev-a")["name"] == "Eingang Vorstufe"
+
+    def test_device_name_is_forwarded_for_persistent_device(self, state_with_store, mock_socketio):
+        """Persistent devices receive the operator name instead of a DB copy."""
+        state_with_store.add_provider("sid-a", self._manifest("dev-a"))
+        assert state_with_store.set_device_name("dev-a", "Eingang Endstufe")
+        mock_socketio.emit.assert_any_call(
+            "persist_config", {"device_name": "Eingang Endstufe"}, room="sid-a"
+        )
+
+    def test_ephemeral_credential_is_not_written_to_database(self, state_with_store, config_store):
+        """Ephemeral pairing stays in memory and disappears with its session."""
+        state_with_store.set_ephemeral_credential("dev-e", "secret", "hash")
+        assert state_with_store.get_ephemeral_credential("dev-e")["status"] == "pending"
+        assert config_store.get_credential("dev-e") is None
+        state_with_store.approve_ephemeral_credential("dev-e", "hash")
+        state_with_store.register_approved_secret("sid-e", "dev-e", "secret")
+        state_with_store.drop_session_auth("sid-e")
+        assert state_with_store.get_ephemeral_credential("dev-e") is None
+        assert state_with_store.get_secret_for_source("dev-e_ch1") is None

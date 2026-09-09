@@ -42,12 +42,12 @@ export const useTask = (task, onUpdateTask) => {
         }
         onUpdateTask(newTask);
   
-        // Then propagate the metadata change to the provider or virtual factory.
-        const providerId = `prov_${updatedSource.originalId || updatedSource.id}`;
-        dispatcher.sendControlCommand(providerId, {
-          action: "update_meta",
-          payload: { [key]: value },
-        });
+        // Alias and colour are persisted by the dispatcher, which forwards them
+        // to devices that keep their own configuration.
+        const targetId = updatedSource.originalId || updatedSource.id;
+        if (key === 'color') dispatcher.setTaskColor(targetId, value);
+        else if (key === 'alias') dispatcher.setTaskAlias(targetId, value || null);
+        else if (key === 'decimals') dispatcher.setTaskDecimals(targetId, value ?? null);
       }, [task, onUpdateTask, dispatcher]);
 
     return { updateConfig, updateMeta };

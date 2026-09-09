@@ -197,9 +197,10 @@ export const SquareWavePlugin = new PluginBuilder("system_square_v1", "Virtual P
         id: `pulse_${Date.now()}`,
         groupId: "system_square_v1",
         type: "GENERATOR",
-        name: "Pulse Gen",
+        name: "Pulse Generator",
         color: "#3b82f6",
         virtual: true,
+        tags: ["Pulse", "Generator", "Simulation"],
         config: {
           frequency: 2,
           amplitude: 5,

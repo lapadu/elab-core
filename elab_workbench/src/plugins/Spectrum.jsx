@@ -8,6 +8,7 @@ export const SpectrumPlugin = new PluginBuilder("plugin_spectrum_v1", "Spectrum 
         name: "Spectrum",
         color: "#8b5cf6",
         virtual: true,
+        tags: ["Spectrum", "FFT", "Frequency", "Measure"],
         inputs: { source: null },
         extraChannels: [],
         config: {

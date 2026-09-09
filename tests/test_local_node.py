@@ -5,11 +5,42 @@ import numpy as np
 import pytest
 import zmq
 
+from elab_api import DeviceDefinition
 from elab_api.local_node import LocalNode
 
 
 class TestLocalNodeRegistration:
     """Tests for task registration logic."""
+
+    def test_device_definition_uses_schema_property_names(self):
+        """Device metadata is converted to the ManifestSchema shape."""
+        device = DeviceDefinition(
+            device_id="board_01",
+            model="esp32_voltmeter",
+            anchor="efuse_mac",
+            name="Lab board",
+            firmware_version="1.2.0",
+            persist_capable=True,
+        )
+
+        assert device.to_manifest() == {
+            "id": "board_01",
+            "model": "esp32_voltmeter",
+            "anchor": "efuse_mac",
+            "name": "Lab board",
+            "firmwareVersion": "1.2.0",
+            "persistCapable": True,
+        }
+
+    def test_invalid_device_anchor_is_rejected(self):
+        """Typos in device identity anchors fail before registration."""
+        node = LocalNode(
+            name="TestNode",
+            device=DeviceDefinition("board_01", "model", "invalid"),
+        )
+
+        with pytest.raises(ValueError, match="Unknown device anchor"):
+            node.device.to_manifest()
 
     def test_register_task_basic(self):
         """register_task stores the task definition."""
@@ -122,6 +153,21 @@ class TestLocalNodeCallbacks:
 
 class TestLocalNodeManifestBuild:
     """Tests for the manifest that gets sent to the bridge."""
+
+    def test_registration_manifest_contains_device_definition(self):
+        """Registration sends the current device definition and API metadata."""
+        node = LocalNode(
+            name="My script",
+            device=DeviceDefinition("board_01", "model", "serial"),
+        )
+        node.register_task("out", template="tpl_metric")
+        node._send_control = MagicMock(return_value={"status": "ok", "shm_channels": {}})
+
+        assert node._register_with_bridge() is True
+        manifest = node._send_control.call_args.args[0]["manifest"]
+        assert manifest["device"]["id"] == "board_01"
+        assert manifest["device"]["anchor"] == "serial"
+        assert manifest["apiVersion"] == "2.1.0"
 
     def test_manifest_structure(self):
         """The built manifest conforms to E-Lab schema structure."""

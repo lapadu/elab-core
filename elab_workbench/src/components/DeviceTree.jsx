@@ -1,11 +1,12 @@
 import React, { useRef, useState, memo } from "react";
-import { Icons } from "../utils/Shared";
+import { Icons, displayName } from "../utils/Shared";
 
 const generateInstanceId = () => `inst_${Date.now()}`;
 
 const STORAGE_KEY_TREE_EXPANDED = "elab.v1.tree_expanded";
-const STORAGE_KEY_CATEGORY_FILTER = "elab.v1.category_filter";
 const STORAGE_KEY_TAG_FILTERS = "elab.v1.tag_filters";
+const STORAGE_KEY_TAGS_EXPANDED = "elab.v1.tags_expanded";
+const STORAGE_KEY_TREE_GROUPING = "elab.v1.tree_grouping";
 
 const loadExpandedState = () => {
   try {
@@ -13,9 +14,9 @@ const loadExpandedState = () => {
     return saved
       ? JSON.parse(saved)
       : {
-          Sensoren: true,
-          Aktoren: true,
-          Generatoren: true,
+          Sensors: true,
+          Actuators: true,
+          Generators: true,
           Math: true,
           Measures: true,
           Recorded: true,
@@ -25,9 +26,9 @@ const loadExpandedState = () => {
   } catch (error) {
     console.error("Failed to load expanded state:", error);
     return {
-      Sensoren: true,
-      Aktoren: true,
-      Generatoren: true,
+      Sensors: true,
+      Actuators: true,
+      Generators: true,
       Math: true,
       Measures: true,
       Recorded: true,
@@ -73,12 +74,12 @@ export const DeviceTree = memo(
   }) => {
     const touchDragStateRef = useRef(null);
     const [expanded, setExpandedLocal] = useState(() => loadExpandedState());
-    const [categoryFilter, setCategoryFilterLocal] = useState(() => {
+    const [treeGrouping, setTreeGroupingLocal] = useState(() => {
       try {
-        return localStorage.getItem(STORAGE_KEY_CATEGORY_FILTER) || null;
+        return localStorage.getItem(STORAGE_KEY_TREE_GROUPING) || "category";
       } catch (error) {
-        console.warn("Failed to load category filter:", error);
-        return null;
+        console.warn("Failed to load tree grouping:", error);
+        return "category";
       }
     });
     const [tagFilters, setTagFiltersLocal] = useState(() => {
@@ -90,21 +91,35 @@ export const DeviceTree = memo(
         return new Set();
       }
     });
+    const [isTagsExpanded, setIsTagsExpandedLocal] = useState(() => {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY_TAGS_EXPANDED);
+        return saved !== null ? JSON.parse(saved) : false;
+      } catch (error) {
+        console.warn("Failed to load tags expanded state:", error);
+        return false;
+      }
+    });
 
-    const setCategoryFilter = (value) => {
-      setCategoryFilterLocal(value);
+    const setTreeGrouping = (value) => {
+      setTreeGroupingLocal(value);
       try {
-        localStorage.setItem(STORAGE_KEY_CATEGORY_FILTER, value || '');
+        localStorage.setItem(STORAGE_KEY_TREE_GROUPING, value);
       } catch (error) {
-        console.warn("Failed to save category filter:", error);
+        console.warn("Failed to save tree grouping:", error);
       }
-      // Reset tag filters when category changes
-      setTagFiltersLocal(new Set());
-      try {
-        localStorage.setItem(STORAGE_KEY_TAG_FILTERS, '[]');
-      } catch (error) {
-        console.warn("Failed to reset tag filters:", error);
-      }
+    };
+
+    const setIsTagsExpanded = (updater) => {
+      setIsTagsExpandedLocal((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        try {
+          localStorage.setItem(STORAGE_KEY_TAGS_EXPANDED, JSON.stringify(next));
+        } catch (error) {
+          console.warn("Failed to save tags expanded state:", error);
+        }
+        return next;
+      });
     };
 
     const toggleTagFilter = (tag) => {
@@ -121,41 +136,21 @@ export const DeviceTree = memo(
       });
     };
 
+    const clearTagFilters = () => {
+      setTagFiltersLocal(new Set());
+      try {
+        localStorage.setItem(STORAGE_KEY_TAG_FILTERS, '[]');
+      } catch (error) {
+        console.warn("Failed to reset tag filters:", error);
+      }
+    };
+
     const setExpanded = (updater) => {
       setExpandedLocal((prev) => {
         const next = typeof updater === "function" ? updater(prev) : updater;
         saveExpandedState(next);
         return next;
       });
-    };
-
-    const getExpandedState = () => {
-      const values = Object.values(expanded);
-      const allExpanded = values.every((v) => v === true);
-      const allCollapsed = values.every((v) => v === false);
-
-      if (allExpanded) return "expanded";
-      if (allCollapsed) return "collapsed";
-      return "mixed";
-    };
-
-    const handleToggleExpandAll = () => {
-      const state = getExpandedState();
-      if (state === "expanded") {
-        // All are expanded, so collapse all
-        const allCollapsed = Object.keys(expanded).reduce((acc, key) => {
-          acc[key] = false;
-          return acc;
-        }, {});
-        setExpanded(allCollapsed);
-      } else {
-        // All are collapsed or mixed, so expand all
-        const allExpanded = Object.keys(expanded).reduce((acc, key) => {
-          acc[key] = true;
-          return acc;
-        }, {});
-        setExpanded(allExpanded);
-      }
     };
 
     const getTypeInfo = (type) => {
@@ -166,7 +161,7 @@ export const DeviceTree = memo(
             icon: Icons.Zap,
             color: "text-blue-500",
             filterKey: "ACTUATOR",
-            label: "Actor",
+            label: "Actuator",
           };
         case "MATH":
           return {
@@ -214,15 +209,6 @@ export const DeviceTree = memo(
       }
     };
 
-    const filterByCategory = (items) => {
-      if (!categoryFilter) return items;
-      return items.filter((dev) => {
-        if (categoryFilter === 'HARDWARE') return !dev.virtual;
-        if (categoryFilter === 'VIRTUAL') return dev.virtual;
-        return true;
-      });
-    };
-
     const filterByTags = (items) => {
       if (tagFilters.size === 0) return items;
       return items.filter((dev) => {
@@ -232,14 +218,14 @@ export const DeviceTree = memo(
     };
 
     const filterList = (items) => {
-      return filterByTags(filterByCategory(items));
+      return filterByTags(items);
     };
 
-    /** Collect all unique tags from items visible after L1 category filter. */
+    /** Collect all unique tags across all registered tasks. */
     const collectVisibleTags = () => {
       const tags = new Set();
       Object.values(devices).forEach((items) => {
-        filterByCategory(items).forEach((dev) => {
+        items.forEach((dev) => {
           (dev.tags || []).forEach((t) => tags.add(t));
         });
       });
@@ -247,6 +233,56 @@ export const DeviceTree = memo(
     };
 
     const visibleTags = collectVisibleTags();
+
+    const deviceGroups = Object.values(devices)
+      .flatMap((items) => filterList(items))
+      .reduce((groups, task) => {
+        const deviceId = task.deviceId || task.providerId || task.id;
+        const providerId = task.providerId || task.id;
+        const device = groups.get(deviceId) || {
+          id: deviceId,
+          name: task.deviceName || deviceId,
+          anchor: task.deviceAnchor,
+          providers: new Map(),
+        };
+        const provider = device.providers.get(providerId) || { id: providerId, tasks: [] };
+        provider.tasks.push(task);
+        device.providers.set(providerId, provider);
+        groups.set(deviceId, device);
+        return groups;
+      }, new Map());
+
+    const getRelevantKeys = () => {
+      if (treeGrouping === "device") {
+        return [...[...deviceGroups.values()].map((d) => `device:${d.id}`), "Library"];
+      }
+      return [...Object.keys(devices), "Library"];
+    };
+
+    const getExpandedState = () => {
+      const keys = getRelevantKeys();
+      if (keys.length === 0) return "collapsed";
+      const allExpanded = keys.every((k) => expanded[k] ?? true);
+      const allCollapsed = keys.every((k) => expanded[k] === false);
+
+      if (allExpanded) return "expanded";
+      if (allCollapsed) return "collapsed";
+      return "mixed";
+    };
+
+    const handleToggleExpandAll = () => {
+      const keys = getRelevantKeys();
+      const state = getExpandedState();
+      const shouldExpand = state !== "expanded";
+
+      setExpanded((prev) => {
+        const next = { ...prev };
+        keys.forEach((key) => {
+          next[key] = shouldExpand;
+        });
+        return next;
+      });
+    };
 
     const buildDragPayload = (dev) => {
       const taskData = dev.isFactory ? dev.createTask() : dev;
@@ -344,79 +380,163 @@ export const DeviceTree = memo(
       }
     };
 
-    const categoryButtons = [
-      { id: null, icon: Icons.Layers, label: "Alle" },
-      { id: "HARDWARE", icon: Icons.Zap, label: "Hardware" },
-      { id: "VIRTUAL", icon: Icons.Cpu, label: "Virtuell" },
-    ];
-
     const expandedState = getExpandedState();
     const isExpanded = expandedState === "expanded";
 
     return (
-      <div className="p-4 space-y-4">
-        {/* FILTER & EXPAND BUTTONS */}
-        <div className="flex items-center mb-4 bg-slate-900 p-1 rounded-lg border border-slate-800">
+      <div className="p-3 space-y-3">
+        {/* ROW 1: TOOLBAR (EXPAND/COLLAPSE & GROUPING) */}
+        <div className="flex items-center justify-between gap-1 bg-slate-900/95 p-1 rounded-lg border border-slate-800 shadow-sm">
+          {/* Left: Expand/Collapse All */}
           <button
+            type="button"
             onClick={handleToggleExpandAll}
-            className="p-1 rounded transition-all flex items-center gap-1 text-slate-500 hover:text-slate-300 hover:bg-slate-800 shrink-0"
+            className={`h-7 w-7 shrink-0 rounded transition-all flex items-center justify-center border border-transparent ${
+              isExpanded
+                ? "text-slate-300 bg-slate-800 hover:bg-slate-700"
+                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+            }`}
             title={isExpanded ? "Collapse all" : "Expand all"}
+            aria-label={isExpanded ? "Collapse all" : "Expand all"}
           >
             {isExpanded ? (
-              <Icons.ListCollapse size={12} />
+              <Icons.ListCollapse size={13} className="text-slate-300" />
             ) : (
-              <Icons.ListChevronsUpDown size={12} />
+              <Icons.ListChevronsUpDown size={13} className="text-slate-400" />
             )}
           </button>
-          <div className="w-px h-6 bg-slate-700 mx-2 shrink-0"></div>
-          <div className="flex-1 flex justify-center gap-1 flex-wrap">
-            {categoryButtons.map((f) => (
-              <button
-                key={f.id ?? "ALL"}
-                onClick={() => setCategoryFilter(f.id)}
-                className={`p-1 rounded transition-all flex items-center gap-1 ${
-                  categoryFilter === f.id
-                    ? "bg-slate-700 text-white shadow-sm"
-                    : "text-slate-500 hover:text-slate-300 hover:bg-slate-800"
-                }`}
-                title={`Filter ${f.label}`}
-              >
-                <f.icon size={12} />
-                <span className="text-[7px] font-bold uppercase hidden sm:inline">
-                  {f.label}
-                </span>
-              </button>
-            ))}
+
+          {/* Right: Grouping Segmented Switcher (Category / Device) */}
+          <div className="flex min-w-0 shrink-0 items-center bg-slate-950/80 p-px rounded-md border border-slate-800/80">
+            <button
+              type="button"
+              onClick={() => setTreeGrouping("category")}
+              className={`px-2 py-1 rounded text-[10px] font-medium transition-all flex items-center gap-1 ${
+                treeGrouping === "category"
+                  ? "bg-slate-700 text-white shadow-sm font-semibold"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
+              }`}
+              title="Group by category"
+              aria-label="Group by category"
+            >
+              <Icons.Layers size={11} />
+              <span>Category</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setTreeGrouping("device")}
+              className={`px-2 py-1 rounded text-[10px] font-medium transition-all flex items-center gap-1 ${
+                treeGrouping === "device"
+                  ? "bg-slate-700 text-white shadow-sm font-semibold"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
+              }`}
+              title="Group by device"
+              aria-label="Group by device"
+            >
+              <Icons.Server size={11} />
+              <span>Device</span>
+            </button>
           </div>
         </div>
 
-        {/* TAG FILTER (Level 2) */}
+        {/* ROW 2: TAGS AS EXTRA ZEILE UNTER CATEGORY UND DEVICES */}
         {visibleTags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-2">
-            {visibleTags.map((tag) => (
-              <button
-                key={tag}
-                onClick={() => toggleTagFilter(tag)}
-                className={`px-1.5 py-0.5 rounded text-[8px] font-medium transition-all border ${
-                  tagFilters.has(tag)
-                    ? "bg-sky-900/60 text-sky-300 border-sky-700"
-                    : "bg-slate-900 text-slate-500 border-slate-800 hover:text-slate-300 hover:border-slate-700"
-                }`}
-              >
-                {tag}
-              </button>
-            ))}
+          <div className="bg-slate-900/95 rounded-lg border border-slate-800 overflow-hidden shadow-sm">
+            <button
+              type="button"
+              onClick={() => setIsTagsExpanded((prev) => !prev)}
+              className="w-full h-7 px-2.5 flex items-center justify-between text-[11px] font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-colors cursor-pointer"
+              aria-expanded={isTagsExpanded}
+            >
+              <div className="flex items-center gap-1.5">
+                <Icons.Tag size={12} className={tagFilters.size > 0 ? "text-sky-400" : "text-slate-400"} />
+                <span className="text-slate-300">Tags</span>
+                <span className="text-[10px] text-slate-500 font-normal">({visibleTags.length})</span>
+                {tagFilters.size > 0 && (
+                  <span className="bg-sky-500 text-slate-950 font-bold text-[9px] px-1.5 rounded-full leading-tight ml-1">
+                    {tagFilters.size} active
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {tagFilters.size > 0 && (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      clearTagFilters();
+                    }}
+                    className="text-[10px] text-sky-400 hover:text-sky-300 underline cursor-pointer"
+                  >
+                    Clear
+                  </span>
+                )}
+                {isTagsExpanded ? (
+                  <Icons.ChevronDown size={12} className="text-slate-400" />
+                ) : (
+                  <Icons.ChevronRight size={12} className="text-slate-400" />
+                )}
+              </div>
+            </button>
+
+            {/* Tags Selection Area (when expanded) */}
+            {isTagsExpanded && (
+              <div className="p-2 border-t border-slate-800/80 bg-slate-950/40">
+                <div className="flex flex-wrap gap-1 max-h-40 overflow-y-auto custom-scrollbar">
+                  {visibleTags.map((tag) => {
+                    const active = tagFilters.has(tag);
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => toggleTagFilter(tag)}
+                        className={`px-2 py-0.5 rounded text-[9px] font-medium transition-all border cursor-pointer ${
+                          active
+                            ? "bg-sky-600 text-white border-sky-500 shadow-sm"
+                            : "bg-slate-800/90 text-slate-400 border-slate-700/60 hover:text-slate-200 hover:border-slate-600"
+                        }`}
+                      >
+                        {tag}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Active Tag Filter Chips (when collapsed but tags are active) */}
+            {!isTagsExpanded && tagFilters.size > 0 && (
+              <div className="px-2.5 py-1.5 border-t border-slate-800/80 bg-slate-950/40 flex items-center gap-1 flex-wrap text-[9px]">
+                <span className="text-slate-500 text-[9px]">Filtered:</span>
+                {[...tagFilters].map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center gap-1 bg-sky-950/90 border border-sky-800/80 text-sky-300 px-1.5 py-0.5 rounded text-[9px]"
+                  >
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => toggleTagFilter(tag)}
+                      className="hover:text-white font-bold leading-none ml-0.5 cursor-pointer"
+                      title={`Remove tag ${tag}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
         {/* DEVICE LISTS */}
-        {Object.entries(devices).map(([category, rawItems]) => {
+        {treeGrouping === "category" && Object.entries(devices).map(([category, rawItems]) => {
           const items = filterList(rawItems);
 
           if (
             items.length === 0 &&
             rawItems.length > 0 &&
-            (categoryFilter || tagFilters.size > 0)
+            tagFilters.size > 0
           )
             return null;
 
@@ -462,9 +582,9 @@ export const DeviceTree = memo(
                           <div className="overflow-hidden min-w-0">
                             <div
                               className="text-xs text-slate-200 font-medium truncate"
-                              title={dev.name}
+                              title={dev.alias ? `${dev.alias} (${dev.name})` : dev.name}
                             >
-                              {dev.name}
+                              {displayName(dev)}
                             </div>
                             <div className="text-[9px] text-slate-600 font-mono flex gap-1 items-center">
                               {!dev.isFactory && (
@@ -474,6 +594,14 @@ export const DeviceTree = memo(
                                 <span className="italic">Template</span>
                               )}
                             </div>
+                            {dev.deviceAnchor === 'ephemeral' && !dev.isFactory && !dev.virtual && (
+                              <div
+                                className="text-[8px] text-amber-500/80 truncate"
+                                title="This device has no persistent identifier. After a restart, it will register as a new device and must be approved again."
+                              >
+                                ephemeral identifier
+                              </div>
+                            )}
                             {dev.clientIp && (
                               <div
                                 className="text-[8px] text-slate-600 font-mono truncate"
@@ -490,13 +618,14 @@ export const DeviceTree = memo(
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const targetId = dev.providerId || dev.id;
-                                if (window.confirm(`Möchtest du das Gerät '${dev.name}' (${targetId}) wirklich entkoppeln?`)) {
+                                // Credentials are held per device, not per provider.
+                                const targetId = dev.deviceId || dev.providerId || dev.id;
+                                if (window.confirm(`Do you really want to revoke device '${displayName(dev)}' (${targetId})?`)) {
                                   onRevokeDevice?.(targetId);
                                 }
                               }}
                               className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition-colors"
-                              title="Gerät entkoppeln (Revoke)"
+                              title="Revoke device"
                             >
                               <Icons.Trash2 size={12} />
                             </button>
@@ -514,6 +643,105 @@ export const DeviceTree = memo(
                       No devices
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {treeGrouping === "device" && [...deviceGroups.values()].map((device) => {
+          const deviceKey = `device:${device.id}`;
+          const deviceExpanded = expanded[deviceKey] ?? true;
+          const providerCount = device.providers.size;
+
+          return (
+            <div key={device.id}>
+              <button
+                type="button"
+                className="w-full flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-widest cursor-pointer hover:text-slate-200 mb-2"
+                aria-expanded={deviceExpanded}
+                aria-controls={`elab-devicetree-section-${device.id}`}
+                onClick={() => setExpanded((previous) => ({ ...previous, [deviceKey]: !deviceExpanded }))}
+              >
+                {deviceExpanded ? <Icons.ChevronDown size={12} /> : <Icons.ChevronRight size={12} />}
+                <Icons.Server size={12} className="text-sky-500" />
+                <span className="truncate" title={device.name}>{device.name}</span> ({providerCount})
+              </button>
+
+              {deviceExpanded && (
+                <div
+                  id={`elab-devicetree-section-${device.id}`}
+                  className="space-y-2 pl-2 border-l border-slate-800 ml-1.5"
+                >
+                  {[...device.providers.values()].map((provider) => (
+                    <div key={provider.id}>
+                      <div className="flex items-center gap-1.5 text-[9px] text-slate-500 font-mono px-2 mb-1">
+                        <Icons.Cpu size={11} />
+                        <span className="truncate" title={provider.id}>{provider.id}</span>
+                      </div>
+                      <div className="space-y-1 pl-2">
+                        {provider.tasks.map((dev) => {
+                          const { icon: TypeIcon, color } = getTypeInfo(dev.type);
+                          return (
+                            <div
+                              key={dev.id}
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, dev)}
+                              onTouchStart={(e) => handleTouchStart(e, dev)}
+                              onTouchMove={handleTouchMove}
+                              onTouchEnd={handleTouchEnd}
+                              onTouchCancel={handleTouchCancel}
+                              className="group flex items-center justify-between p-2 rounded bg-slate-900 border border-transparent hover:border-slate-700 cursor-grab active:cursor-grabbing hover:shadow-md transition-all"
+                            >
+                              <div className="flex items-center gap-2 overflow-hidden">
+                                <TypeIcon size={14} className={color} />
+                                <div className="overflow-hidden min-w-0">
+                                  <div
+                                    className="text-xs text-slate-200 font-medium truncate"
+                                    title={dev.alias ? `${dev.alias} (${dev.name})` : dev.name}
+                                  >
+                                    {displayName(dev)}
+                                  </div>
+                                  <div className="text-[9px] text-slate-600 font-mono flex gap-1 items-center">
+                                    {!dev.isFactory && <span className="truncate">{dev.id}</span>}
+                                    {dev.isFactory && <span className="italic">Template</span>}
+                                  </div>
+                                  {dev.deviceAnchor === 'ephemeral' && !dev.isFactory && !dev.virtual && (
+                                    <div
+                                      className="text-[8px] text-amber-500/80 truncate"
+                                      title="This device has no persistent identifier. After a restart, it will register as a new device and must be approved again."
+                                    >
+                                      ephemeral identifier
+                                    </div>
+                                  )}
+                                  {dev.clientIp && <div className="text-[8px] text-slate-600 font-mono truncate" title={dev.clientIp}>{dev.clientIp}</div>}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {!dev.isFactory && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const targetId = dev.deviceId || dev.providerId || dev.id;
+                                      if (window.confirm(`Do you really want to revoke device '${displayName(dev)}' (${targetId})?`)) {
+                                        onRevokeDevice?.(targetId);
+                                      }
+                                    }}
+                                    className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                                    title="Revoke device"
+                                  >
+                                    <Icons.Trash2 size={12} />
+                                  </button>
+                                )}
+                                <Icons.Move size={12} className="text-slate-600 cursor-grab active:cursor-grabbing" />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -603,23 +831,25 @@ export const DeviceTree = memo(
             <div className="flex items-center gap-2 mb-2">
               <Icons.ShieldAlert size={14} className="text-amber-400" />
               <h3 className="text-xs font-bold uppercase tracking-wider text-amber-300">
-                Registrierung
+                Registration
               </h3>
               <span className="ml-auto text-[9px] font-mono bg-amber-900/60 text-amber-200 px-1.5 py-0.5 rounded">
-                {pendingDevices.length} wartend
+                {pendingDevices.length} pending
               </span>
             </div>
             <p className="text-[10px] text-amber-200/70 mb-2 leading-snug">
-              Neue Geräte müssen einmalig freigegeben werden. Danach
-              authentifizieren sie sich automatisch.
+              New devices must be approved once. Afterwards, they will
+              authenticate automatically.
             </p>
             <div className="space-y-2">
               {pendingDevices.map((dev) => {
                 const deviceId = dev?.deviceId ?? dev?.device_id ?? dev?.id;
-                const name = dev?.manifest?.name || deviceId || "Unbekannt";
+                const name = dev?.manifest?.name || deviceId || "Unknown";
                 const ip = dev?.clientIp || dev?.client_ip || "?";
                 const hash = dev?.manifestHash || dev?.manifest_hash || "";
                 const hashShort = hash ? hash.slice(0, 8) : "—";
+                const device = dev?.manifest?.device || {};
+                const anchor = device.anchor || "ephemeral";
                 return (
                   <div
                     key={deviceId}
@@ -635,25 +865,42 @@ export const DeviceTree = memo(
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 text-[9px] text-slate-500 font-mono mb-2">
+                    <div className="flex items-center gap-2 text-[9px] text-slate-500 font-mono mb-1">
                       <span>{ip}</span>
                       <span>·</span>
                       <span title={hash}>hash:{hashShort}</span>
+                      {device.model && (
+                        <>
+                          <span>·</span>
+                          <span title="Device model (firmware)">{device.model}</span>
+                        </>
+                      )}
                     </div>
+                    {anchor === "ephemeral" && (
+                      <div className="text-[9px] text-amber-400/90 mb-2 leading-snug">
+                        No persistent identifier — registers as a new device
+                        after restart and must be approved again.
+                      </div>
+                    )}
+                    {anchor !== "ephemeral" && (
+                      <div className="text-[9px] text-slate-600 font-mono mb-2">
+                        Identifier: {anchor}
+                      </div>
+                    )}
                     <div className="flex gap-1.5">
                       <button
                         onClick={() => onApproveDevice?.(deviceId, hash)}
                         className="flex-1 px-2 py-1 text-[10px] font-bold rounded bg-emerald-700 hover:bg-emerald-600 text-white transition"
-                        title="Gerät zulassen und Schlüssel ausstellen"
+                        title="Approve device and issue key"
                       >
-                        Zulassen
+                        Approve
                       </button>
                       <button
                         onClick={() => onRevokeDevice?.(deviceId)}
                         className="flex-1 px-2 py-1 text-[10px] font-bold rounded bg-slate-800 hover:bg-rose-900/60 text-slate-300 hover:text-rose-200 border border-slate-700 transition"
-                        title="Verbindung beenden und Schlüssel ablehnen"
+                        title="Disconnect and reject key"
                       >
-                        Ablehnen
+                        Reject
                       </button>
                     </div>
                   </div>

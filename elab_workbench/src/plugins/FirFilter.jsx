@@ -412,6 +412,7 @@ export const FirFilterPlugin = new PluginBuilder("system_fir_filter_v1", "FIR Fi
     name: "FIR Filter",
     color: "#3b82f6",
     virtual: true,
+    tags: ["FIR", "Filter", "DSP", "Math"],
     inputs: { source: null },
     config: {
       cutoffFreq: 100,
@@ -428,7 +429,7 @@ export const FirFilterPlugin = new PluginBuilder("system_fir_filter_v1", "FIR Fi
       views: [
         {
           id: "config",
-          label: "Konfig",
+          label: "Config",
           icon: "Settings",
           template: "system_fir_filter",
         },

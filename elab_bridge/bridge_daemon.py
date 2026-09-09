@@ -328,6 +328,19 @@ class BridgeDaemon:
         if not node_id:
             return {"status": "error", "error": "manifest missing 'id'"}
 
+        # Guarantee an explicit device block. Modern nodes ship their own
+        # identity; for older/foreign nodes we synthesise one so the dispatcher
+        # never has to fall back to legacy id inference. Bridge nodes are
+        # dynamic and multiplexed over one session, so they anchor as ephemeral.
+        device = manifest.get("device")
+        if not isinstance(device, dict):
+            manifest["device"] = {
+                "id": node_id,
+                "model": manifest.get("model") or node_id,
+                "anchor": "ephemeral",
+                "persistCapable": False,
+            }
+
         # If the same node re-registers (e.g. after a request timeout),
         # release old SHM resources before replacing it.
         with self._nodes_lock:

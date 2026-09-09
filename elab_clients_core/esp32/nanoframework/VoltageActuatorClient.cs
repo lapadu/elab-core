@@ -34,9 +34,14 @@ namespace Elab.Actuator
         private const int PwmFrequencyHz = 10000; // 10 kHz
         private const double MaxVoltage = 10.0;
 
+        // Firmware type identity: identical on every board, selects the UI plugin.
+        private const string DeviceModel = "esp32_voltage_actuator";
+        private const string FirmwareVersion = "1.0.0";
+
         private PwmChannel _pwmChannel;
         private string _dispatcherUrl;
         private string _providerId;
+        private string _deviceId;
         
         private bool _isConnectedToDispatcher = false;
         private bool _isParsing = false; // CPU-Protection Flag
@@ -83,9 +88,11 @@ namespace Elab.Actuator
             _playbackThread = new Thread(PlaybackLoop);
             _playbackThread.Start();
 
-            // 3. Generate unique provider ID based on MAC Address
-            _providerId = "esp32_vout_" + GetMacAddress();
-            Log($"Provider ID: {_providerId}");
+            // 3. Derive the per-board device identity from the MAC. The id keeps
+            //    two boards apart; the model stays constant across all of them.
+            _deviceId = DeviceModel + "_" + GetMacAddress();
+            _providerId = _deviceId + "_out";
+            Log($"Device ID: {_deviceId} (model={DeviceModel}, anchor=wifi_mac)");
 
             // Main Reconnect Loop
             while (true)
@@ -294,6 +301,7 @@ namespace Elab.Actuator
             taskObj.Add("id", _providerId + "_v_out");
             taskObj.Add("name", "Voltage Output");
             taskObj.Add("type", "ACTUATOR");
+            taskObj.Add("tags", new object[] { "Voltage", "DAC", "LED", "Actuator" });
             taskObj.Add("ui", uiObj);
             taskObj.Add("config", configObj);
 
@@ -301,6 +309,16 @@ namespace Elab.Actuator
             manifestObj.Add("id", _providerId);
             manifestObj.Add("name", "ESP32 Voltage Actuator");
             manifestObj.Add("category", "HARDWARE");
+
+            Hashtable deviceObj = new Hashtable();
+            deviceObj.Add("id", _deviceId);
+            deviceObj.Add("model", DeviceModel);
+            deviceObj.Add("anchor", "wifi_mac");
+            deviceObj.Add("firmwareVersion", FirmwareVersion);
+            // No NVS-backed config on this board, so the dispatcher persists overrides.
+            deviceObj.Add("persistCapable", false);
+            manifestObj.Add("device", deviceObj);
+
             manifestObj.Add("tasks", new object[] { taskObj });
 
             string manifestJson = JsonConvert.SerializeObject(manifestObj);

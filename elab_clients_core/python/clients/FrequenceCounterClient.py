@@ -50,8 +50,7 @@ DEVICE_MANIFEST = None  # Built dynamically at startup.
 DISPATCHER_PORT = 5000
 UDP_DISCOVERY_PORT = 5005
 
-INSTANCE_ID = int(time.time() * 1000) % 100000
-DEVICE_ID = f"smart_counter_{INSTANCE_ID}"
+DEVICE_MODEL = "smart_counter"
 
 DISCOVERY_ATTEMPTS = 3
 SAMPLE_RATE = 10
@@ -119,6 +118,7 @@ logger.info("Plugin component name: %s", COMPONENT_NAME)
 try:
     # Preferred: absolute import (works whenever project root is on sys.path).
     from elab_clients_core.python.shared.discovery import discover_dispatcher  # type: ignore[import-not-found]
+    from elab_clients_core.python.shared.identity import resolve_device_identity  # type: ignore[import-not-found]
     from elab_clients_core.python.shared.overrides import (  # type: ignore[import-not-found]
         load_overrides,
         save_overrides,
@@ -132,6 +132,7 @@ try:
 except ImportError:
     # Fallback for slim deployments that only ship the ``shared/`` directory.
     from shared.discovery import discover_dispatcher  # type: ignore[import-not-found]
+    from shared.identity import resolve_device_identity  # type: ignore[import-not-found]
     from shared.overrides import (  # type: ignore[import-not-found]
         load_overrides,
         save_overrides,
@@ -143,6 +144,10 @@ except ImportError:
     except ImportError:
         compute_plugin_sri = None  # type: ignore[assignment]
 
+# A persisted id keeps the pairing and the operator's alias/colour across
+# restarts; the previous timestamp-derived id forced re-approval every start.
+IDENTITY = resolve_device_identity(DEVICE_MODEL, name="Smart Freq & Temp Counter")
+DEVICE_ID = IDENTITY.device_id
 OVERRIDES_FILE = os.path.join(core_clients_dir, 'freq_counter_overrides.json')
 
 
@@ -277,7 +282,11 @@ def build_manifest(schema_dict=None):
     global DEVICE_MANIFEST  # pylint: disable=global-statement
     logger.info("🛠️ Building device manifest...")
     builder = ManifestBuilder(DEVICE_ID, "Smart Freq & Temp Counter",
-                              schema_dict=schema_dict)
+                              schema_dict=schema_dict,
+                              device_id=IDENTITY.device_id,
+                              model=IDENTITY.model,
+                              device_anchor=IDENTITY.anchor,
+                              device_name=IDENTITY.name)
     builder.add_task(
         task_id=f"{DEVICE_ID}_t1",
         name="Channel A (Freq)",
@@ -285,6 +294,7 @@ def build_manifest(schema_dict=None):
         group_id="freq_plugin_v1",
         virtual=False,
         color="#d946ef",
+        tags=["Frequency", "Counter", "Sensor"],
         config={
             "range": [44000, 44200],
             "unit": "Hz",
@@ -315,6 +325,7 @@ def build_manifest(schema_dict=None):
         group_id="freq_plugin_v1",
         virtual=False,
         color="#ef4444",
+        tags=["Temperature", "CPU", "Sensor"],
         config={
             "range": [20, 85],
             "unit": "°C",

@@ -18,12 +18,12 @@ Follow the end-to-end data path from provider registration to live UI rendering 
 ### 1. Decoupled "Dispatcher" Architecture
 At the core of e_Lab is the Dispatcher Pattern. The Python backend acts as a central hub that accepts registrations from hardware providers and forwards their real-time data streams to connected UI clients via Socket.IO. Neither the hardware providers nor the frontend clients need to know about each other, ensuring a highly scalable and loosely coupled system.
 
-📖 **[Learn more →](doc/overview.md#dispatcher-architecture)**
+📖 **[Learn more →](doc/overview.md#runtime-architecture)**
 
 ### 2. Zero-Config & Auto-Discovery
 Adding new hardware to the e_Lab system is effortless. Hardware clients automatically find the Dispatcher server on the network via UDP discovery. This "Zero-Config" process eliminates the need for manual IP configuration and allows for instant plug-and-play functionality.
 
-📖 **[Learn more →](doc/overview.md#zero-config-discovery)**
+📖 **[Learn more →](doc/overview.md#discovery-and-connection-flow)**
 
 ### 3. Dynamic Manifest-Based Registration
 e_Lab does not require the frontend to have prior knowledge of the connected hardware. Each provider describes its capabilities—such as tasks, data types, and rendering instructions—through a JSON Manifest. This allows the React application to dynamically build appropriate and fully functional visualizations for unknown hardware on the fly.
@@ -38,20 +38,20 @@ For highly specialized hardware, standard widgets might not be enough. A standou
 ### 5. Session Recording & Live Replay
 The Dispatcher can record all system communication—including registrations, data streams, and control commands—into an SQLite session database. These recorded sessions can be loaded and played back at any time. During playback, the system behaves exactly as if the original hardware providers were connected live, making it an invaluable tool for post-analysis and demonstrations.
 
-📖 **[Learn more →](doc/overview.md#session-recording)**
+📖 **[Learn more →](doc/overview.md#sessions-recording-and-replay)**
 
 ### 6. High-Performance Data Handling
 To accommodate high-rate sensors (e.g., 100 kSps), e_Lab avoids heavy JSON payloads by supporting raw binary data streams. The server utilizes a configurable decoder pipeline to efficiently parse binary chunks, saving significant network bandwidth.
 
-📖 **[Learn more →](doc/overview.md#data-handling)**
+📖 **[Learn more →](doc/overview.md#data-and-control-planes)**
 
 ### 7. Robust Security Model
 Despite its dynamic nature, e_Lab implements strict security measures to protect the workbench from rogue code:
 
 - **Subresource Integrity (SRI):** SRI hashes are transmitted within the manifest to ensure that injected remote plugins have not been tampered with (preventing MITM attacks on the LAN).
-- **Origin Allow-Lists:** The server filters plugin URLs and blocks streams from unverified hosts, gracefully falling back to standard generic widgets if an origin is not explicitly permitted.
+- **Origin Allow-Lists:** The server filters remote plugin URLs from unverified hosts and gracefully falls back to standard generic widgets if an origin is not explicitly permitted.
 
-📖 **[Security Documentation →](doc/plugin_development.md#security)**
+📖 **[Security Documentation →](doc/security.md)**
 
 ## 🏗️ Architecture Overview
 
@@ -103,12 +103,13 @@ npm run build      # Frontend
 e_Lab uses **Socket.IO** for real-time bidirectional communication between hardware providers, the dispatcher, and the web frontend.
 
 **Key Events:**
-- `provider:register` – Hardware registers capabilities
-- `data:stream` – Real-time data flow
-- `ui:command` – Frontend → Hardware control commands
-- `session:record` – Recording/replay events
+- `register_provider` – Provider registers its manifest and capabilities
+- `data_stream` – Real-time measurement data flow
+- `cmd_control` – Frontend or dispatcher control commands
+- `available_providers` – Registered providers and tasks for the workbench
+- Session events – Recording and replay lifecycle events
 
-📖 **[API Reference →](doc/api.md)** | **[WebSocket Protocol →](doc/overview.md#socket-io-protocol)**
+📖 **[API Reference →](doc/api.md)** | **[WebSocket Protocol →](doc/api.md)**
 
 ## 🧪 Testing & Quality Assurance
 
@@ -154,6 +155,8 @@ Contributions are welcome! Whether you're adding features, fixing bugs, or impro
 | [API Reference](doc/api.md) | Socket.IO events & protocols |
 | [Schema Reference](doc/schema_reference.md) | Manifest format & validation |
 | [Plugin Development](doc/plugin_development.md) | Creating custom hardware UI |
+| [Local API Bridge](doc/local_api_bridge.md) | Connecting external Python scripts |
+| [Security](doc/security.md) | Provider pairing and signed data streams |
 | [Class Diagrams](doc/classes.md) | System architecture diagrams |
 | [Deployment](doc/deployment.md) | Production setup (systemd, nginx, TLS) |
 | [Testing](doc/test.md) | Test strategy & running tests |

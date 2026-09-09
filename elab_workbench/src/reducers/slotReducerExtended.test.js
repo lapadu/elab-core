@@ -138,6 +138,38 @@ describe('slotReducer – extended coverage', () => {
       s = slotReducer(s, { type: 'REBIND_PROVIDER', providers, cache })
       expect(s[0].providerId).toBe('prov-A') // unchanged
     })
+
+    it('does not cross-bind two devices sharing a groupId', () => {
+      // Two voltmeters run identical firmware -> same groupId, distinct
+      // device-anchored ids. Volt 1 is placed and streaming; Volt 2 is placed
+      // then transiently vanishes during a RAW-capture reconnect. Its slot must
+      // NOT be rebound onto Volt 1.
+      const volt1 = { id: 'esp_v1_ch1', groupId: 'plugin_volt_v1', providerId: 'esp_v1_adc', type: 'SENSOR' }
+      const volt2 = { id: 'esp_v2_ch1', groupId: 'plugin_volt_v1', providerId: 'esp_v2_adc', type: 'SENSOR' }
+      let s = slotReducer(initialSlotState, { type: 'DROP_TASK', index: 0, baseTask: volt1, cache })
+      s = slotReducer(s, { type: 'DROP_TASK', index: 1, baseTask: volt2, cache })
+
+      // Volt 2 gone from the list mid-reconnect, Volt 1 still present.
+      const providers = [{ id: 'esp_v1_adc', tasks: [{ id: 'esp_v1_ch1', groupId: 'plugin_volt_v1' }] }]
+      s = slotReducer(s, { type: 'REBIND_PROVIDER', providers, cache })
+
+      expect(s[0].providerId).toBe('esp_v1_adc') // Volt 1 untouched
+      expect(s[1].providerId).toBe('esp_v2_adc') // Volt 2 NOT stolen onto Volt 1
+      expect(s[1].id).toBe('esp_v2_ch1')
+    })
+
+    it('rebinds to the same device when only its provider id changed', () => {
+      const volt2 = { id: 'esp_v2_ch1', groupId: 'plugin_volt_v1', providerId: 'esp_v2_adc_old', type: 'SENSOR' }
+      let s = slotReducer(initialSlotState, { type: 'DROP_TASK', index: 0, baseTask: volt2, cache })
+      // Same device-anchored task id returns under a new provider id.
+      const providers = [
+        { id: 'esp_v1_adc', tasks: [{ id: 'esp_v1_ch1', groupId: 'plugin_volt_v1' }] },
+        { id: 'esp_v2_adc_new', tasks: [{ id: 'esp_v2_ch1', groupId: 'plugin_volt_v1' }] },
+      ]
+      s = slotReducer(s, { type: 'REBIND_PROVIDER', providers, cache })
+      expect(s[0].providerId).toBe('esp_v2_adc_new')
+      expect(s[0].id).toBe('esp_v2_ch1')
+    })
   })
 
   describe('RESTORE_SNAPSHOT', () => {

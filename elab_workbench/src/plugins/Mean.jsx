@@ -323,6 +323,7 @@ export const MeanPlugin = new PluginBuilder("system_mean_v1", "Moving Mean", "MA
     name: "Mean",
     color: "#06b6d4",
     virtual: true,
+    tags: ["Mean", "Average", "Filter", "Math"],
     inputs: { source: null },
     config: {
       meanWindow: 10,
@@ -335,7 +336,7 @@ export const MeanPlugin = new PluginBuilder("system_mean_v1", "Moving Mean", "MA
       views: [
         {
           id: "config",
-          label: "Konfig",
+          label: "Config",
           icon: "Settings",
           template: "system_mean",
         },

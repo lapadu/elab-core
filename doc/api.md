@@ -2,6 +2,30 @@
 
 This document describes the API for the E-Lab system, including REST endpoints and Socket.IO events.
 
+## Migration to apiVersion 2.1.0 — device identity
+
+The manifest gained an optional `device` block that separates the **instance**
+identity of a physical unit from the **type** identity of its firmware. This
+makes several units running identical firmware distinguishable, which the
+previous model could not express.
+
+What changes for existing deployments:
+
+- **Every device must be paired once more.** Adding the `device` block changes
+  `manifest_hash`, and devices that switch to a hardware anchor also change
+  their `device_id`. Both force the credential back to `pending`.
+- **Duplicate ids are now refused instead of renamed.** See
+  [Id uniqueness](#id-uniqueness). Firmware that hard-codes its id must derive
+  it from a hardware anchor before two units can run at the same time.
+- **Legacy manifests keep working.** Without a `device` block the provider is
+  treated as its own device (`device.id = id`, `anchor = ephemeral`), and the
+  workbench marks it as having no durable identity.
+- **Operator renames now set `alias`,** not `name`. The manifest name stays
+  visible so the physical origin of a channel remains traceable.
+- Python clients get an anchored identity from
+  `elab_clients_core/python/shared/identity.py`; the previous per-checkout
+  `*_guid.txt` files are removed automatically on first start.
+
 ## 1. REST API Endpoints
 
 The Dispatcher server provides a few standard REST endpoints.
@@ -22,6 +46,10 @@ Returns the health status of the server.
   "uptime": 1690000000.123
 }
 ```
+
+`uptime` currently contains the server's current Unix timestamp. It is kept
+under this legacy field name for compatibility; it is not a duration since
+process start.
 
 ### `GET /api/providers`
 
@@ -44,6 +72,26 @@ Returns the list of currently available providers.
 
 Returns the JSON schema used to validate hardware provider manifests.
 
+### `GET /api/visitors`
+
+Returns the page-view counter maintained by the dispatcher.
+**Response:** `{ "visitors": 123 }`
+
+### `POST /api/discovery/disable`
+
+Stops the UDP discovery broadcast service.
+**Response:** `{ "status": "disabled", "enabled": false }`
+
+### `POST /api/discovery/enable`
+
+Starts the UDP discovery broadcast service.
+**Response:** `{ "status": "enabled", "enabled": true }`
+
+### `GET /api/discovery/status`
+
+Returns whether the UDP discovery service is currently enabled.
+**Response:** `{ "enabled": true }`
+
 ---
 
 ## 2. Socket.IO Events (Client -> Server)
@@ -58,34 +106,70 @@ Registers a hardware provider and announces its tasks.
   - Optional field `auto_approve_token` (string): one-shot token from
     `ELAB_AUTO_APPROVE_TOKEN` env var. Trusted local scripts spawned by
     the `ProcessManager` carry this automatically.
-- **Server Action:** Validates the manifest, sanitizes plugin URLs against
-  the allow-list, computes `manifest_hash` and looks up the device
-  credential. Unknown or changed devices are quarantined.
+- **Server Action:** Validates the manifest against `ManifestSchema.json`,
+  sanitizes plugin URLs against the allow-list, computes `manifest_hash` and
+  looks up the credential by `device.id` (falling back to `id` for legacy
+  manifests). Unknown or changed devices are quarantined.
 - **Emits Back (Pairing flow — see [`security.md`](security.md)):**
   - `registration_approved` `{deviceId, secret, manifestHash}` — pairing
     complete, secret shipped exactly once.
   - `registration_pending` `{deviceId, manifestHash}` — operator approval
-    required in the Workbench "Registrierung" section.
+    required in the Workbench "Registration" section.
   - `registration_revoked` `{deviceId, reason?}` — credential withdrawn.
   - `provider_registered` (to UI clients) on approval, or
-    `registration_error` on invalid manifest.
+    `registration_error` on a rejected manifest.
+
+#### Id uniqueness
+
+Provider ids and task ids share one global name space. A registration whose
+ids are already held by another session is **refused**, not renamed:
+
+```json
+["registration_error", {
+  "code": "duplicate_id",
+  "deviceId": "esp32_voltmeter_01",
+  "conflictingIds": ["esp32_voltmeter_01_adc", "esp32_voltmeter_01_ch1"],
+  "message": "Provider or task ids are already registered by another device: ..."
+}]
+```
+
+Earlier versions appended a `_002` suffix instead. That silently decoupled the
+manifest from the credential the secret was stored under, so the duplicate's
+`data_stream` packets were dropped by the HMAC gate with no visible error.
+Derive ids from a hardware anchor (`device.anchor`) to avoid the clash.
+
+`registration_error` also carries `code: "invalid_manifest"` when schema
+validation fails.
+
+#### `deregister_provider`
+
+Withdraws a single manifest without closing the socket — required by the bridge
+daemon, which multiplexes several devices over one session, and by wrapper
+clients that re-register under a new identity once they bind to hardware.
+
+- **Payload:** `{ "provider_id": "<id>" }`
+- **Server Action:** Only the session that registered the provider may
+  deregister it. Emits `provider_disconnected` and `available_providers` to UIs.
 
 ### `register_client`
 
 Registers a UI client.
 
-- **Payload:** `{ "type": "string" }`
+- **Payload:** `{ "session_id": "...", "client_type": "ui", "timestamp": 1690000000000 }`
 - **Server Action:** Joins the client to the `ui_clients` room and sends the current system state.
-- **Emits Back:** `available_providers`, `available_scripts`, and conditionally `active_tasks_snapshot` and `replay_status`.
+- **Emits Back:** `available_providers`, `available_scripts`, and `pending_devices`; conditionally `active_tasks_snapshot` and `replay_status` when assignments or replay are active.
 
 ### `data_stream` — Hardware Upload
 
 Used by hardware providers to push new measurement data.
 
-> **Authentication required (default).** Every `data_stream` packet MUST
-> carry a signed `auth` block — see [`security.md`](security.md) for the
-> exact format. Unsigned packets are silently dropped. To temporarily
-> disable enforcement (test / migration), set `ELAB_REQUIRE_AUTH=0` on
+> **Authentication required for external providers (default).** Every
+> `data_stream` packet from an external provider MUST carry a signed `auth`
+> block - see [`security.md`](security.md) for the exact format. UI-internal
+> virtual providers are trusted because they originate from an already
+> registered UI socket and bypass this external-provider HMAC gate. Unsigned
+> external packets are silently dropped. To temporarily disable enforcement
+> for all external providers (test / migration), set `ELAB_REQUIRE_AUTH=0` on
 > the server.
 >
 > ```json
@@ -147,7 +231,16 @@ Used by hardware providers to push new measurement data.
   - `randomSigma`: 1-sigma random uncertainty in the payload unit
   - `confidenceK`: optional coverage factor used for display
 
-- **Server Action:** Normalizes timestamps, applies decoder if configured, buffers the data if recording is active, and immediately broadcasts it to all UI clients.
+- **Server Action:** Normalizes timestamps, applies a configured decoder, and
+  immediately broadcasts the normalized payload to all UI clients. The payload
+  is written to the recorder only when recording is active **and** the source
+  task is assigned to an active UI slot. Binary fields are decoded and removed
+  before the normalized payload is forwarded.
+
+The current server does not register `subscribe_task` or `unsubscribe_task`
+handlers. The workbench keeps client-side task subscriptions for callback
+management, but provider data is currently broadcast to the `ui_clients` room;
+these events are not a server-side filtering contract.
 
 ### Time Semantics
 
@@ -190,19 +283,29 @@ one-off commands).
 
 ### `cmd_control`
 
-Used by UI to send a control command (e.g. settings change) to a specific hardware provider.
+Used by the UI to send a control command (e.g. settings change) to a provider.
+Direct routing is the default and is always resolved to the requested provider
+session. A missing direct target is logged and dropped; it is never broadcast.
 
 - **Payload:**
 
   ```json
   {
     "provider_id": "prov_esp32_voltmeter_01",
-    "action": "update_config",
-    "payload": { "range": 10 }
+    "command": {
+      "action": "update_config",
+      "payload": { "range": 10 }
+    }
   }
   ```
 
 - **Server Action:** Forwards the command to the specific provider's Socket.IO session via `execute_command`.
+
+  An explicit broadcast can be requested with `"routing": "broadcast"` inside
+  `command`. The dispatcher then forwards the action only to providers whose
+  manifest declares that action. Routing is control-message metadata only; it
+  is not added to provider manifests and therefore does not change device
+  manifest hashes or require renewed TOFU acceptance.
 
 ### `link_source` / `unlink_source`
 
@@ -221,6 +324,7 @@ UI from the control path (no periodic polling / 20 Hz aliasing).
 ### `provider_meta_changed`
 
 Used when a provider updates its own metadata (like display name or color).
+The event is sent by the owning provider and then broadcast to UI clients.
 
 - **Payload:**
 
@@ -232,6 +336,17 @@ Used when a provider updates its own metadata (like display name or color).
   ```
 
 - **Server Action:** Updates state and broadcasts the change to all UI clients.
+
+### `set_device_name`
+
+Sets an operator-defined display name for a device.
+
+- **Payload:** `{ "device_id": "esp32_voltmeter_01", "name": "Bench meter" }`
+- Set `name` to `null` to clear the override.
+- **Server Action:** Stores the name for dispatcher-managed devices or sends
+  it through `persist_config` to devices that declare
+  `device.persistCapable: true`. Broadcasts `device_config_changed` and an
+  updated `available_providers` list.
 
 ### Provider Pairing (UI -> Server)
 
@@ -281,9 +396,13 @@ Emitted to every newly connected Socket.IO client immediately on connection.
     "server_version": "x.y.z",
     "timestamp": 1690000000.123,
     "session_active": false,
-    "session_id": null
+    "session_id": null,
+    "plugin_origins": ["http://192.168.1.50:8080"]
   }
   ```
+
+`plugin_origins` is the server's configured allow-list for remote UI plugin
+origins. The workbench mirrors it when validating custom plugin URLs.
 
 ### `available_providers`
 
@@ -302,6 +421,13 @@ Broadcasted to UI clients when a new provider successfully registers.
 Broadcasted to UI clients when a provider disconnects.
 
 - **Payload:** `{ "provider_id": "esp32_voltmeter_01", "reason": "disconnect", "timestamp": ... }`
+
+### `pending_devices`
+
+Broadcasted when providers are waiting for operator approval or when a pending
+provider disconnects.
+
+- **Payload:** `{ "devices": [{ "device_id": "...", "manifest": { ... }, "manifest_hash": "...", "client_ip": "...", "first_seen_at": 1690000000.123, "sid": "..." }] }`
 
 ### `data_stream` — Server Broadcast
 
@@ -334,7 +460,14 @@ Sent directly to a specific Hardware Provider to apply a configuration change.
 
 Broadcasted when recording starts/stops.
 
-- **Payload:** `{ "recording": boolean, "sessionId": string|null }`
+- **Payload when recording starts:** `{ "recording": true, "session_id": "..." }`
+- **Payload when recording stops:** `{ "recording": false }`
+
+### `device_config_changed`
+
+Broadcasted when an operator changes a device display name.
+
+- **Payload:** `{ "device_id": "...", "changes": { "name": "..." }, "timestamp": 1690000000.123 }`
 
 ### `replay_status` / `replay_progress`
 
@@ -405,19 +538,26 @@ Broadcasted to UI clients when a task's configuration (alias, color, decimals) c
 
 ### `persist_config`
 
-Sent directly to a provider that has `persistConfig: true` in its manifest, requesting it to store the configuration change locally (e.g., in flash/EEPROM).
+Sent directly to a device that declares `device.persistCapable: true` (or the
+legacy `persistConfig: true`), requesting it to store the configuration change
+locally (e.g. in flash/NVS/EEPROM). Such a device is the single source of truth:
+the dispatcher keeps no copy, and the values travel with the hardware to any
+other E-Lab instance.
 
 - **Payload:**
 
   ```json
   {
     "task_id": "my_device_01_temp",
-    "alias": "Temp Fenster",
+    "alias": "Eingang Vorstufe",
     "color": "#22c55e"
   }
   ```
 
-- Only the changed field(s) are included (alias, color, or both).
+- Only the changed field is included (`alias`, `color` or `decimals`).
+- Devices without `persistCapable` never receive this event; the dispatcher
+  stores their overrides in the `task_config` table instead and re-applies them
+  on the next registration.
 
 ---
 

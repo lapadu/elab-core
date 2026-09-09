@@ -214,10 +214,10 @@ export const SineGenClientPlugin = new PluginBuilder("plugin_sine_gen_v1", "Clie
         id: `sine_${Date.now()}`,
         groupId: "system_sine_v1",
         type: "GENERATOR",
-        name: "Sine Gen",
+        name: "Sine Generator",
         color: "#22c55e", // green-500
         virtual: true,
-        tags: ["Sine", "JS"],
+        tags: ["Sine", "Generator", "Simulation"],
         config: {
             frequency: 1,
             amplitude: 5,

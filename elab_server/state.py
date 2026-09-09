@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
 from .config_store import ConfigStore
+from .auth import is_persist_capable, resolve_device_id
 from .state_stores import (
     ActuatorLinkRegistry,
     PairingStore,
@@ -83,6 +84,10 @@ class SystemState:
         """Adds a provider to the state."""
         return self._providers.add_provider(sid, manifest)
 
+    def find_id_conflicts(self, sid: str, manifest: Dict[str, Any]) -> List[str]:
+        """Return provider/task ids of *manifest* already owned by another sid."""
+        return self._providers.find_id_conflicts(sid, manifest)
+
     def remove_provider(self, sid: str) -> None:
         """Removes a provider from the state and cleans up dependent state."""
         with self._ctx.lock:
@@ -124,6 +129,14 @@ class SystemState:
     def drop_manifest_from_sid(self, sid: str, manifest_id: str) -> None:
         """Remove manifests with *manifest_id* from *sid*'s list (re-register path)."""
         self._providers.drop_manifest(sid, manifest_id)
+
+    def remove_manifest_from_sid(self, sid: str, manifest_id: str) -> List[Dict[str, Any]]:
+        """Remove one manifest and clean all state that depends on its sources."""
+        with self._ctx.lock:
+            providers = self._providers.pop_manifest(sid, manifest_id)
+            self._pairing.forget_sources(providers)
+            self._actuators.purge_for(providers)
+        return providers
 
     def get_decoder(self, source_id: str) -> Any:
         """Return the active decoder for *source_id*, or ``None``."""
@@ -183,6 +196,34 @@ class SystemState:
         """Apply stored configuration (alias, color, decimals) on registration."""
         self._meta.apply_stored_config(manifest)
 
+    def apply_stored_device_config(self, manifest: Dict[str, Any]) -> None:
+        """Apply the dispatcher-held device name for non-persistent devices."""
+        if not self.config_store or is_persist_capable(manifest):
+            return
+        device_id = resolve_device_id(manifest)
+        stored = self.config_store.get_device_config(device_id)
+        if stored.get('name'):
+            manifest.setdefault('device', {})['name'] = stored['name']
+
+    def set_device_name(self, device_id: str, name: Optional[str]) -> bool:
+        """Apply a device name override and route it to the device or cache."""
+        with self._ctx.lock:
+            for providers in self._providers.providers.values():
+                for provider in providers:
+                    if resolve_device_id(provider) != device_id:
+                        continue
+                    provider.setdefault('device', {})['name'] = name
+                    if is_persist_capable(provider):
+                        sid = provider.get('sid')
+                        if sid:
+                            self.socketio.emit(
+                                'persist_config', {'device_name': name}, room=sid
+                            )
+                    elif self.config_store:
+                        self.config_store.set_device_name(device_id, name)
+                    return True
+        return False
+
     def find_upstream_source(self, task_id: str) -> Optional[str]:
         """Find the nearest upstream source task for color propagation."""
         return self._meta.find_upstream_source(task_id)
@@ -217,6 +258,18 @@ class SystemState:
         """Cache an approved provider's secret in memory for fast HMAC verify."""
         self._pairing.register_approved_secret(sid, device_id, secret_hex)
 
+    def set_ephemeral_credential(self, device_id: str, secret_hex: str, manifest_hash: str) -> Dict[str, Any]:
+        """Create a pairing credential that is never written to SQLite."""
+        return self._pairing.set_ephemeral_credential(device_id, secret_hex, manifest_hash)
+
+    def get_ephemeral_credential(self, device_id: str) -> Optional[Dict[str, Any]]:
+        """Return a session-only pairing credential."""
+        return self._pairing.get_ephemeral_credential(device_id)
+
+    def approve_ephemeral_credential(self, device_id: str, manifest_hash: str) -> bool:
+        """Approve a session-only pairing credential."""
+        return self._pairing.approve_ephemeral_credential(device_id, manifest_hash)
+
     def get_secret_for_sid(self, sid: str) -> Optional[str]:
         """Return the cached secret for a session, or ``None`` if not approved."""
         return self._pairing.get_secret_for_sid(sid)
@@ -224,6 +277,14 @@ class SystemState:
     def get_secret_for_source(self, source_id: str) -> Optional[str]:
         """Return the cached secret responsible for a given source / task id."""
         return self._pairing.get_secret_for_source(source_id)
+
+    def find_sid_for_source(self, source_id: str) -> Optional[str]:
+        """Return the session that registered *source_id*, or ``None``."""
+        return self._pairing.find_sid_for_source(source_id)
+
+    def forget_secret(self, device_id: str) -> None:
+        """Drop a cached secret after revocation or for ephemeral devices."""
+        self._pairing.forget_secret(device_id)
 
     def drop_session_auth(self, sid: str) -> Optional[str]:
         """Remove session-level auth state on disconnect. Returns device_id if any."""

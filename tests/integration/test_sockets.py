@@ -448,11 +448,88 @@ class TestControlCommands:
         assert len(cmd_events) >= 1
         provider_client.disconnect()
 
+    def test_cmd_control_forwarded_to_prefixed_virtual_provider(self, client, state):
+        """Virtual providers keep their ``prov_`` prefix in the manifest ID."""
+        from elab_server.app import app, socketio
+
+        manifest = copy.deepcopy(VALID_MANIFEST)
+        manifest["id"] = "prov_camera_test"
+        provider_client = socketio.test_client(app)
+        provider_client.emit("register_provider", manifest)
+        provider_client.get_received()
+
+        client.emit("register_client", {"client_type": "ui"})
+        client.emit(
+            "cmd_control",
+            {
+                "provider_id": "prov_camera_test",
+                "command": {"action": "update_config"},
+            },
+        )
+
+        received = provider_client.get_received()
+        assert any(event["name"] == "execute_command" for event in received)
+        provider_client.disconnect()
+
     def test_cmd_control_empty_provider_id_ignored(self, client, state):
         """cmd_control without provider_id should be silently ignored."""
         client.emit("register_client", {"client_type": "ui"})
         # Should not crash
         client.emit("cmd_control", {"command": {"action": "START"}})
+
+    def test_cmd_control_unknown_direct_target_is_not_broadcast(self, client, state):
+        """A missing direct target must not execute the command on UI clients."""
+        from elab_server.app import socketio
+
+        provider_client = socketio.test_client(client.app)
+        provider_client.emit("register_provider", copy.deepcopy(VALID_MANIFEST))
+        provider_client.get_received()
+        client.emit("register_client", {"client_type": "ui"})
+        client.get_received()
+
+        client.emit(
+            "cmd_control",
+            {
+                "provider_id": "prov_missing_provider",
+                "command": {"action": "START_RAW"},
+            },
+        )
+
+        assert not any(event["name"] == "execute_command" for event in client.get_received())
+        assert not any(event["name"] == "execute_command" for event in provider_client.get_received())
+        provider_client.disconnect()
+
+    def test_cmd_control_explicit_broadcast_targets_declared_actions(self, client, state):
+        """Explicit broadcasts reach only providers declaring the action."""
+        from elab_server.app import socketio
+
+        matching_manifest = copy.deepcopy(VALID_MANIFEST)
+        matching_manifest["id"] = "provider_with_action"
+        matching_manifest["tasks"][0]["actions"] = [{"id": "SYNC_CLOCK", "label": "Sync"}]
+        other_manifest = copy.deepcopy(VALID_MANIFEST)
+        other_manifest["id"] = "provider_without_action"
+
+        matching_client = socketio.test_client(client.app)
+        other_client = socketio.test_client(client.app)
+        matching_client.emit("register_provider", matching_manifest)
+        other_client.emit("register_provider", other_manifest)
+        matching_client.get_received()
+        other_client.get_received()
+        client.emit("register_client", {"client_type": "ui"})
+        client.get_received()
+
+        client.emit(
+            "cmd_control",
+            {
+                "provider_id": "provider_with_action",
+                "command": {"action": "SYNC_CLOCK", "routing": "broadcast"},
+            },
+        )
+
+        assert any(event["name"] == "execute_command" for event in matching_client.get_received())
+        assert not any(event["name"] == "execute_command" for event in other_client.get_received())
+        matching_client.disconnect()
+        other_client.disconnect()
 
 
 class TestProviderMetaChanged:

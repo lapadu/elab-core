@@ -37,12 +37,28 @@ class ConfigStore:
         conn: Optional[sqlite3.Connection] = None
         try:
             conn = sqlite3.connect(self._db_path, check_same_thread=False)
-            conn.execute("PRAGMA journal_mode=WAL;")
+            # Rollback journal (DELETE) instead of WAL on purpose: the deploy
+            # process preserves only the main ``.sqlite`` file across updates
+            # (see tools/process_manager.py keep_extensions). A WAL sidecar
+            # (``elab_config.sqlite-wal``) is dropped on update, which would
+            # discard any committed-but-not-checkpointed writes — e.g. the
+            # page-view counter and provider credential approvals. DELETE mode
+            # keeps every committed transaction inside the preserved main file.
+            # Switching from an existing WAL database triggers a checkpoint, so
+            # previously accumulated data is migrated into the main file here.
+            conn.execute("PRAGMA journal_mode=DELETE;")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS task_config (
                     task_id TEXT PRIMARY KEY,
                     alias TEXT,
                     color TEXT,
+                    updated_at REAL
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS device_config (
+                    device_id TEXT PRIMARY KEY,
+                    name TEXT,
                     updated_at REAL
                 )
             """)
@@ -53,6 +69,15 @@ class ConfigStore:
                 logger.info("Migrated task_config: added decimals column.")
             except sqlite3.OperationalError:
                 # Column already exists
+                pass
+
+            # Provenance: which device owns this task. Task ids stay globally
+            # unique, so task_id remains the primary key; device_id exists so a
+            # device's stored configuration can be listed and purged as a unit.
+            try:
+                conn.execute("ALTER TABLE task_config ADD COLUMN device_id TEXT;")
+                logger.info("Migrated task_config: added device_id column.")
+            except sqlite3.OperationalError:
                 pass
 
             # Provider credentials for HMAC-based authentication.
@@ -122,44 +147,75 @@ class ConfigStore:
             result["decimals"] = row[2]
         return result
 
-    def set_task_alias(self, task_id: str, alias: Optional[str]) -> None:
-        """Store or clear the alias for a task."""
+    def get_device_config(self, device_id: str) -> Dict[str, Any]:
+        """Return dispatcher-held display configuration for a device."""
+        with self._lock:
+            row = self._require_conn().execute(
+                "SELECT name FROM device_config WHERE device_id = ?", (device_id,)
+            ).fetchone()
+        return {"name": row[0]} if row and row[0] is not None else {}
+
+    def set_device_name(self, device_id: str, name: Optional[str]) -> None:
+        """Store or clear an operator override for a device name."""
         with self._lock:
             conn = self._require_conn()
             conn.execute(
-                """INSERT INTO task_config (task_id, alias, updated_at)
+                """INSERT INTO device_config (device_id, name, updated_at)
                    VALUES (?, ?, ?)
-                   ON CONFLICT(task_id) DO UPDATE SET alias = excluded.alias, updated_at = excluded.updated_at""",
-                (task_id, alias, time.time()),
+                   ON CONFLICT(device_id) DO UPDATE SET
+                       name = excluded.name, updated_at = excluded.updated_at""",
+                (device_id, name, time.time()),
             )
             conn.commit()
+
+    def delete_device_config(self, device_id: str) -> int:
+        """Delete device display configuration and its task overrides."""
+        with self._lock:
+            conn = self._require_conn()
+            device_cursor = conn.execute(
+                "DELETE FROM device_config WHERE device_id = ?", (device_id,)
+            )
+            task_cursor = conn.execute(
+                "DELETE FROM task_config WHERE device_id = ?", (device_id,)
+            )
+            conn.commit()
+            return (device_cursor.rowcount or 0) + (task_cursor.rowcount or 0)
+
+    def set_task_alias(self, task_id: str, alias: Optional[str],
+                       device_id: Optional[str] = None) -> None:
+        """Store or clear the alias for a task."""
+        self._set_task_field("alias", task_id, alias, device_id)
         logger.debug("ConfigStore: alias for %s set to %r", task_id, alias)
 
-    def set_task_color(self, task_id: str, color: Optional[str]) -> None:
+    def set_task_color(self, task_id: str, color: Optional[str],
+                       device_id: Optional[str] = None) -> None:
         """Store or clear the color override for a task."""
-        with self._lock:
-            conn = self._require_conn()
-            conn.execute(
-                """INSERT INTO task_config (task_id, color, updated_at)
-                   VALUES (?, ?, ?)
-                   ON CONFLICT(task_id) DO UPDATE SET color = excluded.color, updated_at = excluded.updated_at""",
-                (task_id, color, time.time()),
-            )
-            conn.commit()
+        self._set_task_field("color", task_id, color, device_id)
         logger.debug("ConfigStore: color for %s set to %r", task_id, color)
 
-    def set_task_decimals(self, task_id: str, decimals: Optional[int]) -> None:
+    def set_task_decimals(self, task_id: str, decimals: Optional[int],
+                          device_id: Optional[str] = None) -> None:
         """Store or clear the decimals override for a task."""
+        self._set_task_field("decimals", task_id, decimals, device_id)
+        logger.debug("ConfigStore: decimals for %s set to %r", task_id, decimals)
+
+    def _set_task_field(self, column: str, task_id: str, value: Any,
+                        device_id: Optional[str]) -> None:
+        """Upsert a single task_config column. ``column`` is never user input."""
+        if column not in ("alias", "color", "decimals"):
+            raise ValueError(f"Unsupported task_config column: {column}")
         with self._lock:
             conn = self._require_conn()
             conn.execute(
-                """INSERT INTO task_config (task_id, decimals, updated_at)
-                   VALUES (?, ?, ?)
-                   ON CONFLICT(task_id) DO UPDATE SET decimals = excluded.decimals, updated_at = excluded.updated_at""",
-                (task_id, decimals, time.time()),
+                f"""INSERT INTO task_config (task_id, {column}, device_id, updated_at)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(task_id) DO UPDATE SET
+                       {column} = excluded.{column},
+                       device_id = COALESCE(excluded.device_id, task_config.device_id),
+                       updated_at = excluded.updated_at""",
+                (task_id, value, device_id, time.time()),
             )
             conn.commit()
-        logger.debug("ConfigStore: decimals for %s set to %r", task_id, decimals)
 
     def get_all_configs(self) -> Dict[str, Dict[str, Any]]:
         """Return all stored task configs as {task_id: {alias, color, decimals}}."""

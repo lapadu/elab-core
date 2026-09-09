@@ -26,7 +26,7 @@ export class StreamBuffer {
   * @param {Object} payload Data payload received from the server or provider.
    */
   push(payload) {
-    const { value, values, timestamp, timestamps, distribution, startTime, endTime, uncertainty } = payload;
+    const { value, values, image_b64, timestamp, timestamps, distribution, startTime, endTime, uncertainty } = payload;
     let newPoints = [];
     const pointUncertainty = (uncertainty && typeof uncertainty === 'object') ? uncertainty : undefined;
 
@@ -66,6 +66,10 @@ export class StreamBuffer {
       this.lastValue = values[values.length - 1];
 
     } 
+    // Image frames are retained as the latest value but never become chart samples.
+    else if (typeof image_b64 === 'string') {
+      this.lastValue = image_b64;
+    }
     // Case 2: single-value payloads for legacy or low-speed streams.
     else if (value !== undefined) {
       const t = timestamp ?? Date.now();

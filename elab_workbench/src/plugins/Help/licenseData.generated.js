@@ -209,6 +209,18 @@ export const FRONTEND_DEPS = [
 
 export const BACKEND_DEPS = [
   {
+    "name": "altgraph",
+    "version": "0.17.5",
+    "license": "MIT",
+    "repo": "https://altgraph.readthedocs.io"
+  },
+  {
+    "name": "astroid",
+    "version": "4.0.4",
+    "license": "LGPL-2.1-or-later",
+    "repo": ""
+  },
+  {
     "name": "attrs",
     "version": "26.1.0",
     "license": "MIT",
@@ -234,25 +246,25 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "certifi",
-    "version": "2026.6.17",
+    "version": "2026.2.25",
     "license": "MPL-2.0",
     "repo": "https://github.com/certifi/python-certifi?tab=MPL-2.0-1-ov-file"
   },
   {
     "name": "cffi",
-    "version": "2.1.0",
-    "license": "MIT-0",
+    "version": "2.0.0",
+    "license": "MIT",
     "repo": ""
   },
   {
     "name": "charset-normalizer",
-    "version": "3.4.9",
+    "version": "3.4.6",
     "license": "MIT",
     "repo": ""
   },
   {
     "name": "click",
-    "version": "8.4.2",
+    "version": "8.3.1",
     "license": "BSD-3-Clause",
     "repo": ""
   },
@@ -270,7 +282,7 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "coverage",
-    "version": "7.15.0",
+    "version": "7.14.0",
     "license": "Apache-2.0",
     "repo": "https://github.com/coveragepy/coveragepy?tab=Apache-2.0-1-ov-file"
   },
@@ -281,6 +293,18 @@ export const BACKEND_DEPS = [
     "repo": "https://matplotlib.org/cycler"
   },
   {
+    "name": "dill",
+    "version": "0.4.1",
+    "license": "BSD-3-Clause",
+    "repo": "https://github.com/uqfoundation/dill?tab=BSD-3-Clause-1-ov-file"
+  },
+  {
+    "name": "elab-local-api",
+    "version": "0.1.0",
+    "license": "MIT",
+    "repo": ""
+  },
+  {
     "name": "Flask",
     "version": "3.1.3",
     "license": "BSD-3-Clause",
@@ -288,7 +312,7 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "flask-cors",
-    "version": "6.0.5",
+    "version": "6.0.2",
     "license": "MIT",
     "repo": "https://corydolphin.github.io/flask-cors"
   },
@@ -300,13 +324,13 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "fonttools",
-    "version": "4.63.0",
+    "version": "4.62.1",
     "license": "MIT",
     "repo": "https://github.com/fonttools/fonttools?tab=MIT-1-ov-file"
   },
   {
     "name": "gevent",
-    "version": "26.5.0",
+    "version": "25.9.1",
     "license": "MIT",
     "repo": "http://www.gevent.org"
   },
@@ -318,7 +342,7 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "greenlet",
-    "version": "3.5.3",
+    "version": "3.3.2",
     "license": "MIT AND PSF-2.0",
     "repo": "https://greenlet.readthedocs.io"
   },
@@ -330,7 +354,7 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "idna",
-    "version": "3.18",
+    "version": "3.11",
     "license": "BSD-3-Clause",
     "repo": ""
   },
@@ -339,6 +363,12 @@ export const BACKEND_DEPS = [
     "version": "2.3.0",
     "license": "MIT",
     "repo": "https://github.com/pytest-dev/iniconfig?tab=MIT-1-ov-file"
+  },
+  {
+    "name": "isort",
+    "version": "8.0.1",
+    "license": "MIT",
+    "repo": "https://pycqa.github.io/isort/index.html"
   },
   {
     "name": "itsdangerous",
@@ -378,13 +408,19 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "matplotlib",
-    "version": "3.11.0",
+    "version": "3.10.9",
     "license": "License agreement for matplotlib versions 1.3.0 and later",
     "repo": "https://matplotlib.org"
   },
   {
+    "name": "mccabe",
+    "version": "0.7.0",
+    "license": "Expat license",
+    "repo": "https://github.com/pycqa/mccabe?tab=Expat-license-1-ov-file"
+  },
+  {
     "name": "numpy",
-    "version": "2.5.1",
+    "version": "2.4.4",
     "license": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0",
     "repo": "https://numpy.org"
   },
@@ -395,16 +431,34 @@ export const BACKEND_DEPS = [
     "repo": ""
   },
   {
+    "name": "pefile",
+    "version": "2024.8.26",
+    "license": "MIT",
+    "repo": "https://github.com/erocarrera/pefile?tab=MIT-1-ov-file"
+  },
+  {
     "name": "pillow",
-    "version": "12.3.0",
+    "version": "12.2.0",
     "license": "MIT-CMU",
     "repo": "https://python-pillow.github.io"
+  },
+  {
+    "name": "platformdirs",
+    "version": "4.11.3",
+    "license": "MIT",
+    "repo": "https://github.com/tox-dev/platformdirs?tab=MIT-1-ov-file"
   },
   {
     "name": "pluggy",
     "version": "1.6.0",
     "license": "MIT",
     "repo": ""
+  },
+  {
+    "name": "psutil",
+    "version": "7.2.2",
+    "license": "BSD-3-Clause",
+    "repo": "https://github.com/giampaolo/psutil?tab=BSD-3-Clause-1-ov-file"
   },
   {
     "name": "pycparser",
@@ -417,6 +471,24 @@ export const BACKEND_DEPS = [
     "version": "2.20.0",
     "license": "BSD-2-Clause",
     "repo": "https://pygments.org"
+  },
+  {
+    "name": "pyinstaller",
+    "version": "6.20.0",
+    "license": "GPLv2-or-later with a special exception which allows to use PyInstaller to build and distribute non-free programs (including commercial ones)",
+    "repo": "https://pyinstaller.org"
+  },
+  {
+    "name": "pyinstaller-hooks-contrib",
+    "version": "2026.4",
+    "license": "GPL-2.0-or-later",
+    "repo": "https://github.com/pyinstaller/pyinstaller-hooks-contrib?tab=GPL-2.0-or-later-1-ov-file"
+  },
+  {
+    "name": "pylint",
+    "version": "4.0.7",
+    "license": "GPL-2.0-or-later",
+    "repo": "https://github.com/pylint-dev/pylint?tab=GPL-2.0-or-later-1-ov-file"
   },
   {
     "name": "pyparsing",
@@ -432,7 +504,7 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "pytest",
-    "version": "9.1.1",
+    "version": "9.0.3",
     "license": "MIT",
     "repo": "https://docs.pytest.org/en/latest"
   },
@@ -450,15 +522,21 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "python-engineio",
-    "version": "4.13.3",
+    "version": "4.13.1",
     "license": "MIT",
     "repo": "https://github.com/miguelgrinberg/python-engineio?tab=MIT-1-ov-file"
   },
   {
     "name": "python-socketio",
-    "version": "5.16.3",
+    "version": "5.16.1",
     "license": "MIT",
     "repo": "https://github.com/miguelgrinberg/python-socketio?tab=MIT-1-ov-file"
+  },
+  {
+    "name": "pywin32-ctypes",
+    "version": "0.2.3",
+    "license": "BSD-3-Clause",
+    "repo": "https://github.com/enthought/pywin32-ctypes?tab=BSD-3-Clause-1-ov-file"
   },
   {
     "name": "pyzmq",
@@ -474,15 +552,21 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "requests",
-    "version": "2.34.2",
+    "version": "2.33.0",
     "license": "Apache-2.0",
     "repo": ""
   },
   {
     "name": "rpds-py",
-    "version": "2026.6.3",
+    "version": "0.30.0",
     "license": "MIT",
     "repo": "https://github.com/crate-py/rpds?tab=MIT-1-ov-file"
+  },
+  {
+    "name": "scipy",
+    "version": "1.17.1",
+    "license": "Copyright (c) 2001-2002 Enthought, Inc. 2003, SciPy Developers.",
+    "repo": "https://scipy.org"
   },
   {
     "name": "simple-websocket",
@@ -497,6 +581,12 @@ export const BACKEND_DEPS = [
     "repo": "https://github.com/benjaminp/six?tab=MIT-1-ov-file"
   },
   {
+    "name": "tomlkit",
+    "version": "0.15.1",
+    "license": "MIT",
+    "repo": "https://github.com/python-poetry/tomlkit?tab=MIT-1-ov-file"
+  },
+  {
     "name": "typing_extensions",
     "version": "4.16.0",
     "license": "Unknown",
@@ -504,7 +594,7 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "urllib3",
-    "version": "2.7.0",
+    "version": "2.6.3",
     "license": "MIT",
     "repo": ""
   },
@@ -516,7 +606,7 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "Werkzeug",
-    "version": "3.1.8",
+    "version": "3.1.7",
     "license": "BSD-3-Clause",
     "repo": ""
   },
@@ -582,13 +672,13 @@ export const BACKEND_DEPS = [
   },
   {
     "name": "zope.event",
-    "version": "6.2",
+    "version": "6.1",
     "license": "ZPL-2.1",
-    "repo": ""
+    "repo": "https://github.com/zopefoundation/zope.event?tab=ZPL-2.1-1-ov-file"
   },
   {
     "name": "zope.interface",
-    "version": "8.5",
+    "version": "8.2",
     "license": "ZPL-2.1",
     "repo": ""
   },

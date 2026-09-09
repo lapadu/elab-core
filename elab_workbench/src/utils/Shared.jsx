@@ -5,7 +5,8 @@ import {
   ChevronsLeft, ChevronsRight, Circle, Code, Cpu, Database, Download, Droplets, Eye, EyeOff, FileCode, FileJson, 
   FileSpreadsheet, Gauge, Grid, Grid2x2, Grid3x2, Inbox, Info, Layers, Layout, Link, ListChevronsUpDown, ListCollapse, Loader, Loader2, Maximize, Maximize2, Minimize, MousePointer2,
   Menu, Move, Palette, Pause, Play, Plus, Radio, RefreshCw, Repeat, RotateCcw, Save, Search, Send, Server, Settings, ShieldAlert, Signal,
-  Sigma, Square, Sidebar, Table, Target, Thermometer, Trash2, TrendingUp, TrendingDown, Video, Wifi, WifiOff, Wind, X, Zap, ChevronsDown, Table2
+  Sigma, Square, Sidebar, Table, Target, Thermometer, Trash2, TrendingUp, TrendingDown, Video, Wifi, WifiOff, Wind, X, Zap, ChevronsDown, Table2,
+  Tag, Tags, Filter
 } from 'lucide-react';
 
 export const COLOR_PALETTE = [
@@ -13,6 +14,15 @@ export const COLOR_PALETTE = [
   '#10b981', '#06b6d4', '#3b82f6', '#6366f1',
   '#8b5cf6', '#d946ef', '#ec4899', '#64748b'
 ];
+
+/**
+ * Label to show for a task: the operator alias wins over the manifest name.
+ * The manifest name is never overwritten so the physical origin stays visible.
+ * @param {{alias?: string, name?: string, id?: string}} task
+ * @returns {string}
+ */
+export const displayName = (task) =>
+  task?.alias || task?.name || task?.id || '';
 
 export const SYSTEM_COLORS = {
   background: {
@@ -94,7 +104,8 @@ export const Icons = {
     Plus, Layout, Link, Eye, EyeOff, FileJson, X, Grid, Grid2x2, Grid3x2, Sidebar, Table, Target, FileSpreadsheet, Sigma, ChevronRight, 
     ChevronDown, ListChevronsUpDown, ListCollapse, Palette, Play, MousePointer2, Square, Circle, AlertTriangle, Loader, Loader2, WifiOff, Pause,
     FileCode, Inbox, AlertCircle, Info, ChevronsLeft, ChevronsRight, Check, Archive, Minimize, Maximize,
-    Send, Camera, BarChart2, ChevronsDown, Table2, Menu, ShieldAlert, TrendingUp, TrendingDown, Repeat, Search, Signal, Droplets, Wind, Gauge
+    Send, Camera, BarChart2, ChevronsDown, Table2, Menu, ShieldAlert, TrendingUp, TrendingDown, Repeat, Search, Signal, Droplets, Wind, Gauge,
+    Tag, Tags, Filter
 };
 
 /**

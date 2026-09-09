@@ -1,33 +1,38 @@
-# E-Lab Security — Provider Pairing & HMAC Signing
+# E-Lab Security - Provider Pairing & HMAC Signing
 
-Dieses Dokument beschreibt das **Trust-on-First-Use (TOFU)**-Pairing für
-E-Lab-Provider sowie die laufende HMAC-SHA256-Signierung jedes
-`data_stream`-Pakets. Ziel: ein im LAN/WLAN erreichbarer Dispatcher
-darf **nur** Pakete von ausdrücklich freigegebenen Geräten akzeptieren,
-ohne dabei jedes Gerät vorab manuell konfigurieren zu müssen.
+This document describes **Trust on First Use (TOFU)** pairing for E-Lab
+providers and ongoing HMAC-SHA256 signing of every `data_stream` packet from
+an external provider. The goal is that a dispatcher reachable on the LAN/WLAN
+accepts packets **only** from explicitly approved devices without requiring
+every device to be configured manually in advance.
 
-> Die Implementierung ist absichtlich **leicht** genug, um auch auf ESP32
-> Arduino-Hardware (HW-beschleunigtes mbedTLS-HMAC) ohne TLS zu laufen.
+> The implementation is intentionally **lightweight** enough to run on ESP32
+> Arduino hardware using hardware-accelerated mbedTLS HMAC without TLS.
 
 ---
 
-## 1. Bedrohungsmodell
+## 1. Threat Model
 
-| Angreifer im LAN | Schutz |
+| LAN attacker | Protection |
 |---|---|
-| Schickt gefälschtes `register_provider` mit gestohlener `device_id` | Server fordert HMAC-signierte `data_stream`s; ohne Secret werden alle Pakete verworfen |
-| Mitschnitt + Replay eines alten `data_stream`s | Timestamp im signierten Block (`auth.ts`) wird ggü. Serverzeit verglichen, max. Skew 300 s |
-| Manipulation des Payloads on-the-fly | HMAC bricht, Paket wird verworfen |
-| Wiederbenutzung eines geleakten `auto_approve_token` | Token ist **single-use** und an Server-Prozesslaufzeit gebunden |
-| Manifest-Tausch nach Pairing (z.B. Task-IDs ergänzen) | Server verankert die Genehmigung an `manifest_hash` → veränderte Manifeste landen wieder in `pending` |
+| Sends a forged `register_provider` with a stolen `device_id` | The server requires HMAC-signed `data_stream` packets; without the secret, all packets are rejected |
+| Captures and replays an old `data_stream` packet | The timestamp in the signed block (`auth.ts`) is checked against server time, with a maximum skew of 300 s |
+| Modifies the payload in transit | The HMAC fails and the packet is rejected |
+| Reuses a leaked `auto_approve_token` | The token is **single-use** and exists only for the lifetime of the server process |
+| Changes the manifest after pairing (for example, adds task IDs) | The server binds approval to `manifest_hash`; changed manifests return to `pending` |
 
-**Nicht** abgedeckt: vertrauliche Übertragung der Mess-Payloads (keine
-Verschlüsselung). Wenn nötig, einen TLS-Reverse-Proxy davor schalten —
-siehe `doc/deployment.md`.
+**Not** covered: confidentiality of measurement payloads (there is no
+encryption). If required, place a TLS reverse proxy in front of the service;
+see `doc/deployment.md`.
+
+UI-internal virtual providers are a deliberate exception: the workbench marks
+their source IDs as trusted, so they bypass TOFU/HMAC. This applies only to
+sources created by the trusted UI path, not to external Python scripts,
+hardware clients, or Local API Bridge providers.
 
 ---
 
-## 2. Identitäts- & Lebenszyklus-Modell
+## 2. Identity and Lifecycle Model
 
 ```
 ┌─────────┐    register_provider     ┌──────────────┐
@@ -38,39 +43,52 @@ siehe `doc/deployment.md`.
    │   registration_pending ◄────────┤ └──────────┘ │
    │                                 │       │       │
    │                                 │  Operator     │
-   │                                 │  klickt       │
-   │                                 │  "Zulassen"   │
+  │                                 │  clicks       │
+  │                                 │  "Approve"   │
    │                                 │       ▼       │
    │   registration_approved         │ ┌──────────┐ │
    │   {deviceId, secret} ◄──────────┤ │ approved │ │  (status='approved')
    │                                 │ └──────────┘ │
    │                                 └──────────────┘
    ▼
-[Secret in NVS/SQLite/Datei ablegen]
+[Store secret in NVS/SQLite/file]
    │
    ▼
 data_stream {... , "auth": {"sig": "<hex>", "ts": <epoch>}}
 ```
 
-- **`device_id`** = `manifest.id` (vom Gerät selbst gewählt; bleibt über
-  Reboots stabil).
-- **`manifest_hash`** = SHA-256 über die kanonische Form des Manifests
-  (`json.dumps(sort_keys=True, separators=(",", ":"))` nach Entfernen
-  flüchtiger Felder).
-- **`secret`** = 32 zufällige Bytes (64 Hex), einmalig vom Server an das
-  Gerät gesendet, dort persistent gespeichert.
+* **`device_id`** = `manifest.device.id`, the identifier of the physical or
+  logical unit. Manifests without a `device` block fall back to `manifest.id`
+  for legacy compatibility. Multiple providers from the same device share
+  **one** credential.
+* **`device.anchor`** states where the identifier came from (`efuse_mac`,
+  `serial`, `ble_mac`, `assigned`, `ephemeral`). Every anchor except
+  `ephemeral` is expected to survive a restart. `ephemeral` devices must be
+  approved again after every start and are marked accordingly in the workbench.
+* **`manifest_hash`** = SHA-256 over the canonical manifest representation
+  (`json.dumps(sort_keys=True, separators=(",", ":"))` after volatile fields
+  are removed).
+* **`secret`** = 32 random bytes (64 hex characters), sent once by the server
+  to the device and stored persistently. Ephemeral credentials are kept only
+  in memory for the current session.
 
-### Volatile Manifest-Felder (vor Hash gestrippt)
+### Binding the data stream to the session
+
+In addition to HMAC verification, `data_stream` is checked against the sending
+session: only the Socket.IO session that registered a `sourceId` may send data
+for it. A valid secret alone is not sufficient.
+
+### Volatile manifest fields stripped before hashing
 `sid`, `connected_at`, `client_ip`, `isUiInstance`
 
-Diese Liste **muss** auf Server (`elab_server/auth.py`), Python-Client
-(`elab_clients_core/python/shared/auth.py`) und ESP32 identisch sein.
+This list **must** remain identical in the server (`elab_server/auth.py`),
+Python client (`elab_clients_core/python/shared/auth.py`), and ESP32 firmware.
 
 ---
 
-## 3. HMAC-Format auf der Leitung
+## 3. HMAC Wire Format
 
-Jedes signierte Paket sieht so aus:
+Every signed packet looks like this:
 
 ```json
 {
@@ -86,110 +104,108 @@ Jedes signierte Paket sieht so aus:
 }
 ```
 
-**MAC-Input** =
+**MAC input** =
 ```
 f"{ts:.6f}".encode("ascii") + b"\n" + canonical_payload(payload_without_auth)
 ```
 - `canonical_payload`: `json.dumps(payload_without_auth, sort_keys=True, separators=(",",":"))`
-- HMAC-SHA256 mit dem 32-Byte-Secret als Schlüssel → 64 Hex-Zeichen in `auth.sig`
+- HMAC-SHA256 with the 32-byte secret as the key -> 64 hex characters in `auth.sig`
 
-**Skew-Fenster**: `|server_time - ts| > 300 s` → verworfen.
+**Skew window**: `|server_time - ts| > 300 s` -> rejected.
 
-> **Achtung ESP32:** Da die ESP32-Firmware das Paket selbst byte-weise
-> baut, muss sie die Schlüssel des inneren Objekts **bereits in
-> alphabetischer Reihenfolge** ausgeben (`distribution`, `endTime`,
-> `raw_bytes`, `sourceId`, `startTime`). Der `auth`-Block wird **nach**
-> dem Signieren angehängt und absichtlich an der Sortierung vorbei
-> eingefügt; der Server entfernt ihn vor der Re-Kanonisierung.
-
----
-
-## 4. Socket.IO-Events
-
-### Server → Client
-| Event | Payload | Zweck |
-|---|---|---|
-| `registration_pending` | `{deviceId, manifestHash}` | Gerät wartet auf Operator-Freigabe |
-| `registration_approved` | `{deviceId, secret, manifestHash}` | Einmalige Auslieferung des Secrets |
-| `registration_revoked` | `{deviceId, reason?}` | Operator hat das Gerät blockiert |
-| `pending_devices` | `[{deviceId, manifest, manifestHash, clientIp, firstSeenAt, sid}, ...]` | Aktuelle Pending-Liste für die UI |
-
-### Client → Server (Provider)
-| Event | Payload | Zweck |
-|---|---|---|
-| `register_provider` | `<manifest>` (optional: `auto_approve_token`) | Registrierungsanfrage |
-| `data_stream` | `<payload>` mit signiertem `auth`-Block | Live-Datenpaket |
-
-### UI → Server (Operator)
-| Event | Payload | Zweck |
-|---|---|---|
-| `get_pending_devices` | — | Pending-Liste anfordern |
-| `approve_pending_device` | `{deviceId, manifestHash}` | Pairing genehmigen |
-| `revoke_device` | `{deviceId}` | Gerät trennen + Schlüssel zurückziehen |
-| `delete_device_credential` | `{deviceId}` | Eintrag komplett löschen |
+> **ESP32 note:** Because the ESP32 firmware builds the packet byte by byte,
+> it must output the keys of the inner object in **alphabetical order**
+> (`distribution`, `endTime`, `raw_bytes`, `sourceId`, `startTime`). The `auth`
+> block is appended **after** signing and intentionally added outside that
+> ordering; the server removes it before re-canonicalizing the payload.
 
 ---
 
-## 5. Konfiguration (Env-Variablen)
+## 4. Socket.IO Events
 
-| Variable | Wirkung | Default |
+### Server -> Client
+| Event | Payload | Purpose |
 |---|---|---|
-| `ELAB_REQUIRE_AUTH` | Bei `0`/`false`/`no`/`off` wird die HMAC-Prüfung **deaktiviert** (nur für Tests / Migration) | `true` |
-| `ELAB_AUTO_APPROVE_TOKEN` | Wird vom `ProcessManager` für lokal gespawnte Skripte gesetzt → automatische Freigabe ohne Operator-Klick | unset |
-| `ELAB_CLIENT_CREDENTIALS_DIR` | Speicherort der persistenten Client-Secrets (Python) | `~/.elab/credentials/` |
+| `registration_pending` | `{deviceId, manifestHash}` | Device is waiting for operator approval |
+| `registration_approved` | `{deviceId, secret, manifestHash}` | One-time delivery of the secret |
+| `registration_revoked` | `{deviceId, reason?}` | Operator revoked the device |
+| `pending_devices` | `[{deviceId, manifest, manifestHash, clientIp, firstSeenAt, sid}, ...]` | Current pending list for the UI |
+
+### Client -> Server (provider)
+| Event | Payload | Purpose |
+|---|---|---|
+| `register_provider` | `<manifest>` (optional: `auto_approve_token`) | Registration request |
+| `data_stream` | `<payload>` with signed `auth` block | Live data packet |
+
+### UI -> Server (operator)
+| Event | Payload | Purpose |
+|---|---|---|
+| `get_pending_devices` | - | Request the pending list |
+| `approve_pending_device` | `{deviceId, manifestHash}` | Approve pairing |
+| `revoke_device` | `{deviceId}` | Disconnect the device and revoke its key |
+| `delete_device_credential` | `{deviceId}` | Delete the entry completely |
 
 ---
 
-## 6. Speicherorte
+## 5. Configuration (Environment Variables)
 
-| Speicher | Inhalt |
+| Variable | Effect | Default |
+|---|---|---|
+| `ELAB_REQUIRE_AUTH` | Set to `0`/`false`/`no`/`off` to **disable** HMAC verification (tests or migration only) | `true` |
+| `ELAB_AUTO_APPROVE_TOKEN` | Set by `ProcessManager` for locally spawned scripts -> automatic approval without an operator click | unset |
+| `ELAB_CLIENT_CREDENTIALS_DIR` | Storage location for persistent Python client secrets | `~/.elab/credentials/` |
+
+---
+
+## 6. Storage Locations
+
+| Storage | Contents |
 |---|---|
-| **Server-DB** `elab_server/elab_config.sqlite` Tabelle `provider_credentials` | `device_id`, `secret_hex`, `manifest_hash`, `status`, Timestamps |
-| **Python-Client** `~/.elab/credentials/<device_id>.json` (chmod 600 auf POSIX) | `{device_id, secret_hex, saved_at}` |
-| **ESP32** NVS Namespace `elab_auth`, Key `secret` | Hex-String, 64 Zeichen |
+| **Server database** `elab_server/elab_config.sqlite`, table `provider_credentials` | `device_id`, `secret_hex`, `manifest_hash`, `status`, timestamps |
+| **Python client** `~/.elab/credentials/<device_id>.json` (`chmod 600` on POSIX) | `{device_id, secret_hex, saved_at}` |
+| **ESP32** NVS namespace `elab_auth`, key `secret` | 64-character hex string |
 
 ---
 
-## 7. Operative Szenarien
+## 7. Operational Scenarios
 
-### Neues Gerät einbinden
-1. Gerät einschalten → meldet sich mit `register_provider`.
-2. Workbench → Sidebar → Sektion **"Registrierung"** zeigt das Gerät.
-3. Operator klickt **"Zulassen"**.
-4. Dispatcher sendet `registration_approved` inkl. Secret.
-5. Gerät speichert Secret persistent und beginnt mit signierten
-   `data_stream`s.
+### Add a new device
+1. Power on the device; it registers with `register_provider`.
+2. In the workbench, the **"Registration"** section in the sidebar shows the device.
+3. The operator clicks **"Approve"**.
+4. The dispatcher sends `registration_approved` with the secret.
+5. The device stores the secret persistently and starts sending signed
+   `data_stream` packets.
 
-### Gerät tauschen / Firmware-Update mit Manifest-Änderung
-- Beim nächsten Connect erkennt der Server einen neuen `manifest_hash`.
-- Status wird automatisch auf `pending` zurückgesetzt → Operator muss
-  erneut zulassen. Das ursprüngliche Secret wird verworfen.
+### Replace a device or update firmware with a manifest change
+- On the next connection, the server detects a new `manifest_hash`.
+- The status is automatically reset to `pending`; the operator must approve it
+  again. The original secret is discarded.
 
-### Gerät verloren / kompromittiert
-- Operator klickt **"Ablehnen"** in der Registrierungs-Sektion (oder bei
-  einem bereits genehmigten Gerät den Revoke-Button).
-- Dispatcher trennt die Verbindung und sendet `registration_revoked`.
-- Bei zukünftigen Reconnects landet das Gerät wieder in `pending`.
+### Device lost or compromised
+- The operator clicks **"Reject"** in the Registration section (or the Revoke
+  button for an already approved device).
+- The dispatcher disconnects the device and sends `registration_revoked`.
+- On future reconnects, the device returns to `pending`.
 
-### Auto-Pairing lokal gestarteter Skripte
-- `ProcessManager.start_script(...)` ruft `make_auto_approve_token()`
-  und setzt `ELAB_AUTO_APPROVE_TOKEN` im Child-Prozess.
-- Das gestartete Skript reicht den Token via `register_provider.auto_approve_token`
-  durch.
-- Dispatcher verbraucht den Token einmalig, springt direkt in
-  `approved` und sendet das Secret zurück.
+### Auto-pairing locally spawned scripts
+- `ProcessManager.start_script(...)` calls `make_auto_approve_token()` and sets
+  `ELAB_AUTO_APPROVE_TOKEN` in the child process.
+- The spawned script forwards the token as `register_provider.auto_approve_token`.
+- The dispatcher consumes the token once, transitions directly to `approved`,
+  and sends the secret back.
 
 ---
 
 ## 8. Troubleshooting
 
-| Symptom | Ursache | Lösung |
+| Symptom | Cause | Solution |
 |---|---|---|
-| `data_stream HMAC verify failed: signature mismatch` | Kanonisierung weicht auf Client und Server ab (z.B. ungewollt veränderte Volatile-Liste, falsche Key-Reihenfolge auf ESP32) | Sicherstellen, dass `_VOLATILE_MANIFEST_FIELDS` synchron ist; ESP32-JSON in alphabetischer Reihenfolge bauen |
-| `data_stream HMAC verify failed: timestamp skew exceeds limit` | Geräte-Uhr läuft falsch (ESP32 ohne NTP) | NTP auf dem Gerät aktivieren (`configTime(...)`); ggf. Skew-Fenster anpassen |
-| Gerät erscheint nicht in der Registrierungs-Sektion | UI hat `pending_devices` noch nicht abgefragt | Workbench neu laden oder `get_pending_devices` triggern |
-| ESP32 verwirft Frames mit `[AUTH] Geraet noch nicht freigegeben` | Kein Secret in NVS | In Workbench freigeben; ESP32 speichert Secret beim nächsten `registration_approved` |
-| Nach Server-Wipe rückt Gerät nicht in `pending` | Gerät hat noch gültiges Secret im NVS/Datei und sendet sofort `data_stream` (das verworfen wird, weil Server-DB leer ist) | Secret auf dem Gerät löschen (NVS `elab_auth` flashen / `~/.elab/credentials/<id>.json` löschen), dann reconnect |
+| `data_stream HMAC verify failed: signature mismatch` | Canonicalization differs between client and server (for example, an accidentally changed volatile-field list or incorrect key order on ESP32) | Ensure `_VOLATILE_MANIFEST_FIELDS` is synchronized; build ESP32 JSON in alphabetical order |
+| `data_stream HMAC verify failed: timestamp skew exceeds limit` | Device clock is incorrect (ESP32 without NTP) | Enable NTP on the device (`configTime(...)`); adjust the skew window if necessary |
+| Device does not appear in the Registration section | The UI has not requested `pending_devices` yet | Reload the workbench or trigger `get_pending_devices` |
+| ESP32 rejects frames with `[AUTH] Geraet noch nicht freigegeben` | No secret is stored in NVS | Approve the device in the workbench; the ESP32 stores the secret on the next `registration_approved` |
+| Device does not return to `pending` after a server wipe | The device still has a valid secret in NVS or a file and immediately sends `data_stream` (which is rejected because the server database is empty) | Delete the device secret (flash NVS `elab_auth` or delete `~/.elab/credentials/<id>.json`), then reconnect |
 
 ---
 
@@ -203,23 +219,22 @@ pytest tests/test_provider_auth.py -v
 pytest tests/test_client_auth.py -v
 ```
 
-Beide Suites laufen ohne laufenden Dispatcher und nutzen
-isolierte tmp-Verzeichnisse für SQLite + Credentials.
+Both suites run without a running dispatcher and use isolated temporary
+directories for SQLite and credentials.
 
 ---
 
-## 10. Migrationshinweis
+## 10. Migration Note
 
-Bestehende Installationen, die das Update einspielen, ohne dass die
-Geräte mit neuer Firmware/Client-Lib laufen, werden alle eingehenden
-`data_stream`-Pakete verwerfen. Übergang:
+Existing installations that apply the update before their devices run the new
+firmware or client library will reject all incoming `data_stream` packets.
+Migration path:
 
-1. Server aktualisieren (HMAC-Prüfung **aktiv**).
-2. Mit `ELAB_REQUIRE_AUTH=0` starten, solange noch Legacy-Geräte im
-   Einsatz sind.
-3. Geräte sukzessive aktualisieren und in der Workbench freigeben.
-4. Wenn alle Geräte umgestellt sind, `ELAB_REQUIRE_AUTH` wieder
-   entfernen → Default `true`.
+1. Update the server (HMAC verification **enabled**).
+2. Start with `ELAB_REQUIRE_AUTH=0` while legacy devices are still in use.
+3. Update the devices incrementally and approve them in the workbench.
+4. Once all devices have been migrated, remove `ELAB_REQUIRE_AUTH` again;
+  the default is `true`.
 
 ---
 

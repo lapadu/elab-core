@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from .context import StateContext
 from .provider_registry import ProviderRegistry
+from ..auth import resolve_device_id
 
 
 class PairingStore:
@@ -24,6 +25,9 @@ class PairingStore:
         # Active approved providers: device_id -> secret_hex (in-memory cache
         # for fast HMAC verification on the data_stream hot path).
         self.approved_secrets: Dict[str, str] = {}
+        # Ephemeral credentials never enter SQLite and live only for one session.
+        self.ephemeral_credentials: Dict[str, Dict[str, Any]] = {}
+        self.ephemeral_devices: set[str] = set()
         # sid -> device_id mapping for approved sessions.
         self.sid_to_device: Dict[str, str] = {}
         # One-shot auto-approval tokens issued to locally-spawned scripts via
@@ -92,6 +96,38 @@ class PairingStore:
             self.approved_secrets[device_id] = secret_hex
             self.sid_to_device[sid] = device_id
 
+    def set_ephemeral_credential(
+        self, device_id: str, secret_hex: str, manifest_hash: str
+    ) -> Dict[str, Any]:
+        """Create or refresh a session-only pending credential."""
+        with self._ctx.lock:
+            entry = self.ephemeral_credentials.get(device_id)
+            if entry and entry.get("manifest_hash") == manifest_hash:
+                return entry
+            entry = {
+                "device_id": device_id,
+                "secret_hex": secret_hex,
+                "manifest_hash": manifest_hash,
+                "status": "pending",
+            }
+            self.ephemeral_credentials[device_id] = entry
+            self.ephemeral_devices.add(device_id)
+            return entry
+
+    def get_ephemeral_credential(self, device_id: str) -> Optional[Dict[str, Any]]:
+        """Return a session-only credential, if present."""
+        with self._ctx.lock:
+            return self.ephemeral_credentials.get(device_id)
+
+    def approve_ephemeral_credential(self, device_id: str, manifest_hash: str) -> bool:
+        """Approve an in-memory credential after verifying its manifest hash."""
+        with self._ctx.lock:
+            entry = self.ephemeral_credentials.get(device_id)
+            if not entry or entry.get("manifest_hash") != manifest_hash:
+                return False
+            entry["status"] = "approved"
+            return True
+
     def get_secret_for_sid(self, sid: str) -> Optional[str]:
         """Return the cached secret for a session, or ``None`` if not approved."""
         with self._ctx.lock:
@@ -105,28 +141,43 @@ class PairingStore:
 
         Looks up the owning provider's manifest by ``source_id`` (which may be
         the provider id itself or any of its task ids) and returns the secret
-        keyed by ``device_id`` (= manifest['id']). This works correctly even
-        when several providers are multiplexed through one Socket.IO session
-        (e.g. via the bridge daemon).
+        keyed by the owning *device* id. Resolving via the device rather than
+        the provider keeps multi-provider devices and bridge-multiplexed
+        sessions on a single credential.
         """
         with self._ctx.lock:
             for p_list in self._providers.providers.values():
                 for provider in p_list:
                     if provider.get('id') == source_id:
-                        return self.approved_secrets.get(provider['id'])
+                        return self.approved_secrets.get(resolve_device_id(provider))
                     for task in provider.get('tasks', []) or []:
                         if task.get('id') == source_id:
-                            pid = provider.get('id')
-                            if pid:
-                                return self.approved_secrets.get(pid)
-                            return None
+                            return self.approved_secrets.get(resolve_device_id(provider))
         return None
+
+    def find_sid_for_source(self, source_id: str) -> Optional[str]:
+        """Return the session that registered *source_id*, or ``None``."""
+        return self._providers.find_provider_sid(source_id)
+
+    def forget_secret(self, device_id: str) -> None:
+        """Drop a cached secret, e.g. after revocation or for ephemeral devices."""
+        with self._ctx.lock:
+            self.approved_secrets.pop(device_id, None)
+            for sid, mapped in list(self.sid_to_device.items()):
+                if mapped == device_id:
+                    self.sid_to_device.pop(sid, None)
+            self.ephemeral_credentials.pop(device_id, None)
+            self.ephemeral_devices.discard(device_id)
 
     def drop_session_auth(self, sid: str) -> Optional[str]:
         """Remove session-level auth state on disconnect. Returns device_id if any."""
         with self._ctx.lock:
             device_id = self.sid_to_device.pop(sid, None)
-            # Keep ``approved_secrets`` intact across reconnects (TOFU persists).
+            if device_id in self.ephemeral_devices:
+                self.approved_secrets.pop(device_id, None)
+                self.ephemeral_credentials.pop(device_id, None)
+                self.ephemeral_devices.discard(device_id)
+            # Persistent credentials survive reconnects; ephemeral ones do not.
             return device_id
 
     # ------------------------------------------------------------------

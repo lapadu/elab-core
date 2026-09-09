@@ -325,6 +325,41 @@ class DispatcherClient {
     this.socket?.emit(SOCKET_EVENTS.STOP_CLIENT_SCRIPT, { filename });
   }
 
+  // --- Task configuration (alias / colour / precision) ---
+
+  /**
+   * Persist an operator alias for a task, e.g. "Eingang Vorstufe".
+   * The dispatcher routes it to the device when the device persists its own
+   * configuration, otherwise it stores it on the device's behalf.
+   * @param {string} taskId
+   * @param {string|null} alias  Pass null to clear the alias.
+   */
+  setTaskAlias(taskId, alias) {
+    this.socket?.emit(SOCKET_EVENTS.SET_TASK_ALIAS, { task_id: taskId, alias });
+  }
+
+  setDeviceName(deviceId, name) {
+    this.socket?.emit(SOCKET_EVENTS.SET_DEVICE_NAME, { device_id: deviceId, name });
+  }
+
+  /**
+   * Persist a colour override for a task.
+   * @param {string} taskId
+   * @param {string|null} color  Hex string, or null to fall back to the manifest colour.
+   */
+  setTaskColor(taskId, color) {
+    this.socket?.emit(SOCKET_EVENTS.SET_TASK_COLOR, { task_id: taskId, color });
+  }
+
+  /**
+   * Persist the number of decimal places the UI should render.
+   * @param {string} taskId
+   * @param {number|null} decimals
+   */
+  setTaskDecimals(taskId, decimals) {
+    this.socket?.emit(SOCKET_EVENTS.SET_TASK_DECIMALS, { task_id: taskId, decimals });
+  }
+
   // --- Replay management ---
 
   getSessions() {

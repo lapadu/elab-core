@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { Icons, preventFocusOnMouseDown } from "../utils/Shared";
 import { useChannelSources } from "./core/hooks/useChannelSources";
 import { useTriggerModel } from "./core/hooks/useTriggerModel";
@@ -12,10 +12,17 @@ import { MetricWidget } from "./core/templates/MetricWidget";
 // SI-prefix range, decimals) and only adds channel/trigger management
 // (ChannelToolbar) and drag'n'drop on top.
 // ==========================================
-const MeasureWidget = ({ task, isConfigMode, onUpdateTask, streamBuffers }) => {
+const MeasureWidget = ({ task, isConfigMode, onUpdateTask, streamBuffers, onRawCaptureAwaitingChange }) => {
   const [channelMenuOpen, setChannelMenuOpen] = useState(false);
   const [triggerMenuOpen, setTriggerMenuOpen] = useState(false);
   const [rawCaptureAwaiting, setRawCaptureAwaiting] = useState(false);
+
+  // Keep the host's Connection-Lost overlay hidden while a RAW capture drops
+  // WiFi on purpose.
+  useEffect(() => {
+    onRawCaptureAwaitingChange?.(rawCaptureAwaiting);
+    return () => onRawCaptureAwaitingChange?.(false);
+  }, [rawCaptureAwaiting, onRawCaptureAwaitingChange]);
 
   const isPaused = task.config?.isPaused ?? false;
   const showUncertainty = task.config?.showUncertainty ?? false;
@@ -171,6 +178,7 @@ export const MeasurePlugin = new PluginBuilder("system_measure_v1", "Measure Dis
         name: "Measure",
         color: "#f59e0b",
         virtual: true,
+        tags: ["Measure", "Metric", "Display"],
         inputs: { source: null },
         extraChannels: [],
         config: {

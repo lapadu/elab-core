@@ -19,7 +19,6 @@ import argparse
 import threading
 import urllib.request
 import urllib.error
-import uuid
 from typing import Any, Optional, Dict, Tuple
 
 import socketio
@@ -53,6 +52,7 @@ except ImportError:
 
 try:
     from elab_clients_core.python.shared.discovery import discover_dispatcher
+    from elab_clients_core.python.shared.identity import resolve_device_identity
     from elab_clients_core.python.shared.overrides import (
         load_overrides,
         save_overrides,
@@ -61,6 +61,7 @@ try:
     from elab_clients_core.python.shared.auth import ProviderAuth
 except ImportError:
     from shared.discovery import discover_dispatcher
+    from shared.identity import resolve_device_identity
     from shared.overrides import (
         load_overrides,
         save_overrides,
@@ -93,30 +94,24 @@ DISCOVERY_ATTEMPTS = 3
 GUID_FILE = os.path.join(core_clients_dir, "owon_xdm1041_guid.txt")
 
 
-def get_or_create_guid() -> str:
-    """Retrieves a persistent GUID from disk or creates a new UUIDv4 if not existing."""
+def _migrate_legacy_guid() -> None:
+    """Remove the pre-2.1 GUID file that was shared by every checkout.
+
+    It lived inside the repository, so all instances derived the same id and
+    the dispatcher could not tell two multimeters apart.
+    """
     if os.path.exists(GUID_FILE):
         try:
-            with open(GUID_FILE, "r", encoding="utf-8") as f:
-                saved_guid = f.read().strip()
-                if saved_guid:
-                    return saved_guid
-        except Exception as exc:
-            logger.warning("Could not read GUID file: %s", exc)
-
-    new_guid = str(uuid.uuid4())
-    try:
-        os.makedirs(os.path.dirname(GUID_FILE), exist_ok=True)
-        with open(GUID_FILE, "w", encoding="utf-8") as f:
-            f.write(new_guid)
-        logger.info("Created new persistent provider GUID: %s", new_guid)
-    except Exception as exc:
-        logger.warning("Could not write GUID file: %s", exc)
-    return new_guid
+            os.remove(GUID_FILE)
+            logger.info("Removed legacy GUID file %s; identity now lives in ~/.elab/identity.", GUID_FILE)
+        except OSError as exc:
+            logger.warning("Could not remove legacy GUID file: %s", exc)
 
 
-PROVIDER_GUID = get_or_create_guid()
-DEVICE_ID = f"owon_xdm1041_{PROVIDER_GUID}"
+_migrate_legacy_guid()
+DEVICE_MODEL = "owon_xdm1041"
+IDENTITY = resolve_device_identity(DEVICE_MODEL, name="OWON XDM1041 Multimeter")
+DEVICE_ID = IDENTITY.device_id
 DEVICE_MANIFEST = None
 OVERRIDES_FILE = os.path.join(core_clients_dir, 'owon_xdm1041_overrides.json')
 
@@ -283,7 +278,15 @@ def build_manifest(schema_dict=None):
     """Builds the device manifest with mutually exclusive tasks."""
     global DEVICE_MANIFEST
     logger.info("🛠️ Building device manifest...")
-    builder = ManifestBuilder(DEVICE_ID, "OWON XDM1041 Multimeter", schema_dict=schema_dict)
+    builder = ManifestBuilder(
+        DEVICE_ID,
+        "OWON XDM1041 Multimeter",
+        schema_dict=schema_dict,
+        device_id=IDENTITY.device_id,
+        model=IDENTITY.model,
+        device_anchor=IDENTITY.anchor,
+        device_name=IDENTITY.name,
+    )
     
     # 1. Voltage Task (DC/AC selectable)
     builder.add_task(
@@ -294,6 +297,7 @@ def build_manifest(schema_dict=None):
         group="voltmeter_group",
         virtual=False,
         color="#ef4444",
+        tags=["Multimeter", "Voltage", "Sensor"],
         config={
             "range": [-1000, 1000],
             "unit": "V",
@@ -378,6 +382,7 @@ def build_manifest(schema_dict=None):
         group="amperemeter_group",
         virtual=False,
         color="#3b82f6",
+        tags=["Multimeter", "Current", "Sensor"],
         config={
             "range": [-10, 10],
             "unit": "A",
@@ -462,6 +467,7 @@ def build_manifest(schema_dict=None):
         group="ohmmeter_group",
         virtual=False,
         color="#10b981",
+        tags=["Multimeter", "Resistance", "Sensor"],
         config={
             "range": [0, 50000000],
             "unit": "Ω",
@@ -535,6 +541,7 @@ def build_manifest(schema_dict=None):
         group="frequency_group",
         virtual=False,
         color="#f59e0b",
+        tags=["Multimeter", "Frequency", "Sensor"],
         config={
             "range": [0, 60000000],
             "unit": "Hz",
@@ -579,6 +586,7 @@ def build_manifest(schema_dict=None):
         group="capacitance_group",
         virtual=False,
         color="#8b5cf6",
+        tags=["Multimeter", "Capacitance", "Sensor"],
         config={
             "range": [0, 0.05],
             "unit": "F",

@@ -4,6 +4,7 @@
 #include <ArduinoJson.h>
 #include <freertos/queue.h>
 #include <mbedtls/base64.h>
+#include "esp_mac.h"
 
 // --- CONFIGURATION ---
 const char* ssid = "my ssid";
@@ -26,7 +27,31 @@ QueueHandle_t valueQueue;
 const int QUEUE_SIZE = 4096; // buffer up to 4096 values
 volatile int currentBufferSize = 0; // 0 = Push-Mode with Values
 
-String providerId;
+// ======================================================================
+// DEVICE IDENTITY
+// ======================================================================
+// The efuse MAC is burned into the chip and readable before WiFi, so it is
+// the strongest per-board anchor available. MODEL is identical on every
+// board running this firmware and selects the UI plugin; the id keeps two
+// boards apart so the dispatcher no longer refuses the second one.
+static const char* DEVICE_MODEL     = "esp32c6_rgb_actuator";
+static const char* FIRMWARE_VERSION = "1.0.0";
+String deviceId;    // esp32c6_rgb_actuator_<mac12>
+String providerId;  // <deviceId>_out
+
+static void initDeviceIdentity() {
+    uint8_t mac[6] = {0};
+    char macHex[13];
+    if (esp_efuse_mac_get_default(mac) != ESP_OK) {
+        WiFi.macAddress(mac);
+    }
+    snprintf(macHex, sizeof(macHex), "%02x%02x%02x%02x%02x%02x",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    deviceId   = String(DEVICE_MODEL) + "_" + macHex;
+    providerId = deviceId + "_out";
+    Serial.printf("[IDENTITY] Device: %s (model=%s, anchor=efuse_mac)\n",
+                  deviceId.c_str(), DEVICE_MODEL);
+}
 
 // ==========================================
 // DISCOVERY
@@ -106,12 +131,26 @@ void sendManifest() {
     manifest["id"] = providerId;
     manifest["name"] = "ESP32-C6 RGB Actuator";
     manifest["category"] = "HARDWARE";
-    
+
+    JsonObject device = manifest.createNestedObject("device");
+    device["id"] = deviceId;
+    device["model"] = DEVICE_MODEL;
+    device["anchor"] = "efuse_mac";
+    device["firmwareVersion"] = FIRMWARE_VERSION;
+    // This board keeps no NVS config, so the dispatcher stores overrides.
+    device["persistCapable"] = false;
+
     JsonArray tasks = manifest.createNestedArray("tasks");
     JsonObject task = tasks.createNestedObject();
     task["id"] = providerId + "_rgb_out";
-    task["name"] = "Voltage RGB LED";
+    task["name"] = "Voltage Output";
     task["type"] = "ACTUATOR";
+    
+    JsonArray tags = task.createNestedArray("tags");
+    tags.add("Voltage");
+    tags.add("DAC");
+    tags.add("LED");
+    tags.add("Actuator");
     
     JsonObject ui = task.createNestedObject("ui");
     ui["mode"] = "generic";
@@ -395,6 +434,9 @@ void setup() {
     delay(1000);
     Serial.println("\nStarte ESP32-C6 RGB Actuator...");
 
+    // Anchor the identity before anything else; the efuse MAC needs no WiFi.
+    initDeviceIdentity();
+
     // Turn off LED initially
     neopixelWrite(RGB_LED_PIN, 0, 0, 0);
 
@@ -410,11 +452,6 @@ void setup() {
         Serial.print(".");
     }
     Serial.println("\nWLAN verbunden.");
-
-    // Get unique provider ID based on MAC (must be done AFTER WiFi is initialized)
-    String mac = WiFi.macAddress();
-    mac.replace(":", "");
-    providerId = "esp32c6_rgb_" + mac;
 
     // Start playback task on Core 1 (or 0 since C6 is single core, FreeRTOS handles it)
     xTaskCreate(playbackTask, "Playback", 2048, NULL, 1, NULL);

@@ -83,20 +83,51 @@ DEVICE_MANIFEST = builder.build()
 | --- | --- | --- | --- |
 | `id` | `string` | required | Permanent, globally unique provider identifier. Must remain constant across restarts and reconnects – derived from hardware serial number, MAC address, or equivalent immutable source. |
 | `name` | `string` | required | Human-readable name displayed in the UI (e.g., Frequency Counter RaspberryPi). |
+| `device` | `Device` | optional | Identity of the physical/logical unit hosting this provider. Omitting it makes the provider its own device (legacy behaviour). |
 | `category` | `string` | required | Provider category. HARDWARE for physical devices (incl. adapters), VIRTUAL_INTERNAL for built-in virtual sources, VIRTUAL_SCRIPT for script-based virtual sources. |
 | `providerVersion` | `string` | optional | Provider implementation version. |
 | `apiVersion` | `string` | optional | API version for compatibility checks. |
-| `persistConfig` | `boolean` | optional | If true, the provider persists configuration (alias, color overrides) autonomously. This means the device behaves identically across different E-Lab instances. If false (default), the E-Lab dispatcher stores configuration in its SQLite DB on behalf of the provider. |
+| `isUiInstance` | `boolean` | optional | Marks a provider that only injects UI components and exposes no data source. Hidden from the device tree. |
+| `persistConfig` | `boolean` | optional | Legacy spelling of `device.persistCapable`. If true, the provider persists configuration (alias, color overrides) autonomously. If false (default), the E-Lab dispatcher stores configuration in its SQLite DB on behalf of the provider. |
 | `tasks` | `Task[]` | required | A list of Task objects this provider offers. Must contain at least one task. |
 
 ### Nested Objects
+
+#### `Device` Object
+
+One device may expose several providers; all of them share a single pairing
+credential, which is keyed by `device.id`.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | required | Globally unique **instance** identifier. Derive it from a hardware anchor so two units running identical firmware stay distinguishable. |
+| `model` | `string` | required | **Type** identity shared by every unit running the same firmware (e.g. `esp32_voltmeter`). Never unique per instance. |
+| `anchor` | `string` | required | Where the id came from: `efuse_mac`, `serial`, `ble_mac`, `assigned` or `ephemeral`. |
+| `name` | `string` | optional | Human-readable default name of the unit. |
+| `firmwareVersion` | `string` | optional | Firmware/implementation version. |
+| `persistCapable` | `boolean` | optional | True if the device can store operator configuration itself. The dispatcher then pushes `persist_config` instead of keeping its own copy. |
+
+**Anchor ladder** — use the strongest one available:
+
+| Anchor | Source | Survives restart |
+| --- | --- | --- |
+| `efuse_mac` | Chip MAC / efuse (ESP32 `esp_efuse_mac_get_default`) | yes, no storage needed |
+| `serial` | USB / VISA instrument serial number | yes, no storage needed |
+| `ble_mac` | MAC of the bound Bluetooth peripheral | yes, once bound |
+| `assigned` | UUID generated once and persisted by the client | yes, needs writable storage |
+| `ephemeral` | Nothing stable available | **no** — pairing must be repeated |
+
+Python clients get this for free via
+`elab_clients_core/python/shared/identity.py:resolve_device_identity()`.
 
 #### `Task` Object
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | `string` | required | Permanent, unique task identifier. Must remain constant across restarts – like a hardware serial number or MAC-derived value. Used by E-Lab to track configuration (alias, color) persistently. |
-| `name` | `string` | required | Display name for the task in the UI (e.g., Channel A (Frequency)). |
+| `id` | `string` | required | Permanent, **globally** unique task identifier (pattern `^[a-zA-Z0-9_\-]+$`). Prefix it with the device id so identical firmware on two units does not collide. The dispatcher refuses a registration whose ids are already taken. |
+| `name` | `string` | required | Display name for the task in the UI (e.g., Channel A (Frequency)). Never overwritten by the operator. |
+| `alias` | `string` | optional | Operator-chosen display name that overrides `name` in the UI (e.g. "Eingang Vorstufe"). Set via `set_task_alias`. |
+| `decimals` | `integer` | optional | Number of decimal places the UI should render for this task's value (0-12). |
 | `type` | `string` | required | Task type. Must be SENSOR, ACTUATOR, MATH, MEASURE, CONTROL, or GENERATOR. |
 | `groupId` | `string` | optional | Groups tasks within a provider into a functional unit. The hardware supports only one task of a group at a time. |
 | `color` | `string` | optional | Default hex color for this task (e.g. #ef4444). Acts as the initial visualization color for SENSOR, MATH, MEASURE, CONTROL, and GENERATOR tasks. Can be overridden at runtime by the user at source or sink level. Color changes at a sink propagate back to the nearest upstream source (but not beyond intermediate processing modules like MATH). |

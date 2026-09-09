@@ -6,7 +6,7 @@ import React, {
     useMemo,
     useCallback,
 } from "react";
-import { ColorPicker, Icons } from "../../../utils/Shared";
+import { ColorPicker, Icons, displayName } from "../../../utils/Shared";
 import { getConfig, getLatestValue } from "../utils/configUtils";
 import dispatcher from "../../../services/DispatcherClient";
 
@@ -387,7 +387,7 @@ export const MetricWidget = ({
           return (
             <div key={ch.id} className="border-t border-slate-700 pt-3">
               <label className="text-xs text-slate-400 uppercase tracking-wider block mb-2">
-                Range — <span style={{ color: ch.color }}>{ch.name}</span>
+                Range — <span style={{ color: ch.color }}>{displayName(ch)}</span>
               </label>
               <div className="flex flex-wrap gap-2">
                 {["auto", "", "m", "µ", "k", "M", "G"].map((mode) => (
@@ -512,7 +512,7 @@ export const MetricWidget = ({
               </>
             )}
             <div className="text-[10px] text-slate-500 uppercase tracking-widest mt-1 flex items-center justify-center gap-2">
-              <span>{ch.name}</span>
+              <span title={ch.name}>{displayName(ch)}</span>
               <button
                 onClick={() => handleRangeToggle(ch.id)}
                 className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200 transition-colors"

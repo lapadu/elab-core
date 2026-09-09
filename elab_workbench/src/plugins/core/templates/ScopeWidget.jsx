@@ -3,8 +3,9 @@ import React, {
     useRef,
     useCallback,
     useState,
+    useEffect,
 } from "react";
-import { Icons, COLOR_PALETTE, preventFocusOnMouseDown } from "../../../utils/Shared";
+import { Icons, COLOR_PALETTE, preventFocusOnMouseDown, displayName } from "../../../utils/Shared";
 import { useScopeCanvas, computeAmplitudeFitBounds } from "../hooks/useScopeCanvas";
 import { useChannelSources } from "../hooks/useChannelSources";
 import { useTriggerModel } from "../hooks/useTriggerModel";
@@ -18,6 +19,7 @@ const ScopeGraphWidget = ({
   isConfigMode,
   streamBuffers,
   onUpdateTask,
+  onRawCaptureAwaitingChange,
 }) => {
   const canvasRef = useRef(null);
   const [stats, setStats] = useState({});
@@ -30,6 +32,13 @@ const ScopeGraphWidget = ({
   });
   const [overlayResetToken, setOverlayResetToken] = useState(0);
   const [rawCaptureAwaiting, setRawCaptureAwaiting] = useState(false);
+
+  // Tell the host a RAW capture is in progress so it keeps the Connection-Lost
+  // overlay hidden while the provider is intentionally offline (WiFi off).
+  useEffect(() => {
+    onRawCaptureAwaitingChange?.(rawCaptureAwaiting);
+    return () => onRawCaptureAwaitingChange?.(false);
+  }, [rawCaptureAwaiting, onRawCaptureAwaitingChange]);
 
   const updateConfig = useCallback((updates) => {
     const newConfig = { ...task.config, ...updates };
@@ -236,7 +245,7 @@ const ScopeGraphWidget = ({
                     <div>
                       <label className="text-[10px] text-slate-400 block mb-1">Channel</label>
                       <select value={trg.channelId || ''} onChange={(e) => moveTriggerToChannel(trg.id, e.target.value)} className="w-full bg-slate-950 text-slate-200 text-xs p-1.5 rounded border border-slate-700 outline-none focus:border-blue-500">
-                        {sources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        {sources.map(s => <option key={s.id} value={s.id}>{displayName(s)}</option>)}
                       </select>
                     </div>
                     <div className="mt-2">
@@ -258,7 +267,7 @@ const ScopeGraphWidget = ({
               {sources.map(s => (
                 <div key={s.id} className="bg-slate-950 p-3 rounded-lg border border-slate-800">
                   <div className="flex justify-between items-center mb-3">
-                    <input type="text" value={s.name} onChange={(e) => updateSourceMeta(s.id, "name", e.target.value)} className="bg-slate-900 text-xs font-bold text-slate-300 px-2 py-1 rounded border border-slate-700 w-2/3 focus:outline-none focus:border-blue-500" />
+                    <input type="text" value={s.alias ?? ""} placeholder={s.name} onChange={(e) => updateSourceMeta(s.id, "alias", e.target.value)} className="bg-slate-900 text-xs font-bold text-slate-300 px-2 py-1 rounded border border-slate-700 w-2/3 focus:outline-none focus:border-blue-500" title={s.name} />
                     <button onClick={() => removeSource(s.id)} className="text-slate-500 hover:text-red-400 hover:bg-red-900/30 p-1.5 rounded transition-colors" title="Remove Channel"><Icons.Trash2 size={14} /></button>
                   </div>
                   <div className="flex gap-1.5 flex-wrap">{COLOR_PALETTE.map(c => <button key={c} onClick={() => updateSourceMeta(s.id, "color", c)} className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${s.color === c ? "border-white scale-110 shadow-lg" : "border-transparent"}`} style={{ backgroundColor: c }} title={`Set color ${c}`} />)}</div>
@@ -350,7 +359,7 @@ const ScopeGraphWidget = ({
                               <div key={s.id} className="bg-slate-900/80 backdrop-blur border border-slate-700 p-2 rounded shadow-lg min-w-[120px]">
                                   <div className="flex items-center gap-2 mb-1">
                                       <div className="w-2 h-2 rounded-full" style={{backgroundColor: s.color}}></div>
-                                      <span className="text-[10px] font-bold uppercase text-slate-300">{s.name}</span>
+                                      <span className="text-[10px] font-bold uppercase text-slate-300" title={s.name}>{displayName(s)}</span>
                                   </div>
                                   <div className="grid grid-cols-2 gap-x-4 gap-y-0 text-[10px] text-slate-400 font-mono">
                                       <span>Now:</span> <span className="text-white text-right">{stat.current?.toFixed(2)}</span>

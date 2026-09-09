@@ -107,6 +107,14 @@ describe('StreamBuffer', () => {
     expect(b.getData()).toEqual([])
   })
 
+  it('retains image frames without adding them to numeric history', () => {
+    const b = new StreamBuffer()
+    const frame = 'data:image/jpeg;base64,aGVsbG8='
+    b.push({ image_b64: frame, timestamp: 100 })
+    expect(b.getLatest()).toBe(frame)
+    expect(b.getData()).toEqual([])
+  })
+
   it('preserves uncertainty metadata and exposes latest uncertainty', () => {
     const b = new StreamBuffer()
     b.push({

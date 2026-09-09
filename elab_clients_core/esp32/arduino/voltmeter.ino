@@ -5,6 +5,7 @@
 #include <freertos/queue.h>
 #include "driver/i2s.h"
 #include "esp_task_wdt.h"
+#include "esp_mac.h"
 #include <Preferences.h>
 #include <mbedtls/md.h>
 #include <time.h>
@@ -98,7 +99,73 @@ static String hmacSecretHex = "";   // 64 hex chars when present
 static bool   isApproved    = false;
 static const char* AUTH_NVS_NS  = "elab_auth";
 static const char* AUTH_NVS_KEY = "secret";
-static const char* DEVICE_ID    = "esp32_voltmeter_01"; // must match manifest.id
+
+// ======================================================================
+// DEVICE IDENTITY
+// ======================================================================
+// The device id must be unique per board, otherwise the dispatcher cannot
+// tell two boards running this very firmware apart and refuses the second
+// registration. The efuse MAC is burned into the chip, is readable before
+// WiFi comes up and needs no NVS write, so it is the strongest anchor
+// available here. MODEL stays identical across all boards - that is what
+// selects the UI plugin.
+static const char* DEVICE_MODEL      = "esp32_voltmeter";
+static const char* FIRMWARE_VERSION  = "1.1.0";
+static String deviceId   = "";   // esp32_voltmeter_<mac12>
+static String providerId = "";   // <deviceId>_adc
+static String taskCh1Id  = "";   // <deviceId>_ch1
+
+static void initDeviceIdentity() {
+    uint8_t mac[6] = {0};
+    char macHex[13];
+    if (esp_efuse_mac_get_default(mac) != ESP_OK) {
+        // Falling back to the WiFi MAC keeps the id unique; it is derived from
+        // the same efuse block on every ESP32 variant we support.
+        WiFi.macAddress(mac);
+    }
+    snprintf(macHex, sizeof(macHex), "%02x%02x%02x%02x%02x%02x",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+    deviceId   = String(DEVICE_MODEL) + "_" + macHex;
+    providerId = deviceId + "_adc";
+    taskCh1Id  = deviceId + "_ch1";
+
+    Serial.printf("[IDENTITY] Device: %s (model=%s, anchor=efuse_mac)\n",
+                  deviceId.c_str(), DEVICE_MODEL);
+}
+
+// ======================================================================
+// OPERATOR CONFIGURATION (persisted in NVS)
+// ======================================================================
+// This board declares persistCapable, so the dispatcher forwards alias and
+// colour changes here via `persist_config` instead of storing them itself.
+// The values then travel with the hardware: plug the board into a different
+// E-Lab and "Eingang Vorstufe" in red is still "Eingang Vorstufe" in red.
+static Preferences cfgPrefs;
+static const char* CFG_NVS_NS = "elab_cfg";
+static String taskAlias = "";
+static String taskColor = "#eab308";
+
+static void loadStoredConfig() {
+    cfgPrefs.begin(CFG_NVS_NS, true /* readonly */);
+    taskAlias = cfgPrefs.getString("alias", "");
+    taskColor = cfgPrefs.getString("color", "#eab308");
+    currentSampleRate      = cfgPrefs.getInt("sampleRate", currentSampleRate);
+    currentMedianGroupSize = cfgPrefs.getInt("medianGrp", currentMedianGroupSize);
+    currentDmaBufferSamples = cfgPrefs.getInt("dmaBuf", currentDmaBufferSamples);
+    cfgPrefs.end();
+    Serial.printf("[CONFIG] alias='%s' color=%s rate=%d median=%d dma=%d\n",
+                  taskAlias.c_str(), taskColor.c_str(), currentSampleRate,
+                  currentMedianGroupSize, currentDmaBufferSamples);
+}
+
+static void saveMeasurementConfig() {
+    cfgPrefs.begin(CFG_NVS_NS, false);
+    cfgPrefs.putInt("sampleRate", currentSampleRate);
+    cfgPrefs.putInt("medianGrp", currentMedianGroupSize);
+    cfgPrefs.putInt("dmaBuf", currentDmaBufferSamples);
+    cfgPrefs.end();
+}
 
 static void loadStoredSecret() {
     authPrefs.begin(AUTH_NVS_NS, true /* readonly */);
@@ -204,11 +271,18 @@ void sendManifest() {
     array.add("register_provider");
    
     JsonObject manifest = array.createNestedObject();
-    manifest["id"] = "esp32_voltmeter_01";
+    manifest["id"] = providerId;
     manifest["name"] = "ESP32 High-Speed ADC";
     manifest["category"] = "HARDWARE";
     manifest["isUiInstance"] = false; // Prevent the frontend from classifying it as a hidden UI plugin.
     manifest["version"] = "1.0";
+
+    JsonObject device = manifest.createNestedObject("device");
+    device["id"] = deviceId;
+    device["model"] = DEVICE_MODEL;
+    device["anchor"] = "efuse_mac";
+    device["firmwareVersion"] = FIRMWARE_VERSION;
+    device["persistCapable"] = true;
    
     JsonArray capabilities = manifest.createNestedArray("capabilities");
     capabilities.add("measure");
@@ -216,12 +290,22 @@ void sendManifest() {
 
     JsonArray tasks = manifest.createNestedArray("tasks");
     JsonObject task1 = tasks.createNestedObject();
-    task1["id"] = "esp32_voltmeter_01_ch1";
-    task1["name"] = "Spannung CH1";
+    task1["id"] = taskCh1Id;
+    task1["name"] = "Voltage CH1";
     task1["type"] = "SENSOR";
     task1["groupId"] = "plugin_volt_v1";
     task1["virtual"] = false;
-    task1["color"] = "#eab308";
+    task1["color"] = taskColor;
+    if (taskAlias.length() > 0) {
+        task1["alias"] = taskAlias;
+    }
+
+    JsonArray tags = task1.createNestedArray("tags");
+    tags.add("Voltage");
+    tags.add("ADC");
+    tags.add("Analog");
+    tags.add("Scope");
+    tags.add("Sensor");
    
     JsonObject config = task1.createNestedObject("config");
     JsonArray range = config.createNestedArray("range");
@@ -474,7 +558,7 @@ void socketIOEvent(socketIOmessageType_t type, uint8_t * payload, size_t length)
                 JsonObject payloadObj = doc[1];
                 String dev    = payloadObj["deviceId"].as<String>();
                 String secret = payloadObj["secret"].as<String>();
-                if (dev == DEVICE_ID && secret.length() == 64) {
+                if (dev == deviceId && secret.length() == 64) {
                     hmacSecretHex = secret;
                     isApproved = true;
                     saveSecret(secret);
@@ -486,15 +570,47 @@ void socketIOEvent(socketIOmessageType_t type, uint8_t * payload, size_t length)
             else if (eventName == "registration_revoked") {
                 JsonObject payloadObj = doc[1];
                 String dev = payloadObj["deviceId"].as<String>();
-                if (dev == DEVICE_ID) {
+                if (dev == deviceId) {
                     clearSecret();
                 }
+            }
+            // The dispatcher forwards operator changes here because this device
+            // declares persistCapable; it does not keep a copy of its own.
+            else if (eventName == "persist_config") {
+                JsonObject payloadObj = doc[1];
+                cfgPrefs.begin(CFG_NVS_NS, false);
+                if (payloadObj["alias"].is<const char*>()) {
+                    taskAlias = payloadObj["alias"].as<String>();
+                    cfgPrefs.putString("alias", taskAlias);
+                    Serial.printf("[CONFIG] Alias gespeichert: %s\n", taskAlias.c_str());
+                }
+                if (payloadObj["color"].is<const char*>()) {
+                    taskColor = payloadObj["color"].as<String>();
+                    cfgPrefs.putString("color", taskColor);
+                    Serial.printf("[CONFIG] Farbe gespeichert: %s\n", taskColor.c_str());
+                }
+                cfgPrefs.end();
             }
             else if (eventName == "execute_command") {
                 JsonObject commandData = doc[1];
                 String action = commandData["command"]["action"];
+
+                // Commands must stay bound to the provider that owns the
+                // selected channel. Ignore a command for another identical
+                // sensor if the server had to broadcast it as a fallback.
+                String targetProviderId = commandData["provider_id"].as<String>();
+                String routing = commandData["command"]["routing"].as<String>();
+                bool isExplicitBroadcast = routing == "broadcast";
+                bool targetsThisDevice = isExplicitBroadcast ||
+                                         targetProviderId == providerId ||
+                                         targetProviderId == (String("prov_") + providerId);
                
                 if (action == "START_RAW" && currentState == STANDARD_MODUS) {
+                    if (!targetsThisDevice) {
+                        Serial.printf("\n[COMMAND] START_RAW fuer fremden Provider ignoriert: %s\n",
+                                      targetProviderId.c_str());
+                        break;
+                    }
                     Serial.println("\n[COMMAND] Server fordert RAW-Aufnahme an.");
                     currentState = RAW_START;
                 }
@@ -522,6 +638,7 @@ void socketIOEvent(socketIOmessageType_t type, uint8_t * payload, size_t length)
 
                     if (configChanged && currentState == STANDARD_MODUS) {
                         Serial.println("[MODUS] Konfiguration geändert. Neustart wird vorbereitet...");
+                        saveMeasurementConfig();
                         configChangePending = true; // Defer the restart to the main loop.
                     }
                 }
@@ -942,6 +1059,9 @@ void setup() {
 
     dataQueue = xQueueCreate(2, sizeof(uint8_t*));
 
+    initDeviceIdentity();
+    loadStoredConfig();
+
     Serial.printf("\n[WLAN] Verbinde mit SSID: %s\n", ssid);
     connectToBestWiFi();
     while (WiFi.status() != WL_CONNECTED) {
@@ -1119,7 +1239,7 @@ void loop() {
             // socketIO.loop() is already executed at the top of the loop.
             if (socketIO.isConnected() && sendRawBeforeStandard) {
                 Serial.println("[STREAM] Sende gepufferten RAW-Block an das e_Lab...");
-                sendDataToELab(rawDataBuffer, rawDataBufferSize / 2, "esp32_voltmeter_01_ch1");
+                sendDataToELab(rawDataBuffer, rawDataBufferSize / 2, taskCh1Id.c_str());
                 Serial.println("[STREAM] RAW-Daten erfolgreich übertragen.");
                 sendRawBeforeStandard = false;
                 currentState = RAW_ENDE;
@@ -1141,7 +1261,7 @@ void loop() {
                     if (millis() - lastSendLog > 2000) {
                         lastSendLog = millis();
                     }
-                    sendDataToELab(readyBuffer, voltMeter->sendBufferValues, "esp32_voltmeter_01_ch1");
+                    sendDataToELab(readyBuffer, voltMeter->sendBufferValues, taskCh1Id.c_str());
                 } else if (!socketIO.isConnected()) {
                     static unsigned long lastWarnLog = 0;
                     if (millis() - lastWarnLog > 2000) {

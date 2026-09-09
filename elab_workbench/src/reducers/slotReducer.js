@@ -176,31 +176,93 @@ export const slotReducer = (state, action) => {
             const { providers } = action;
             let changed = false;
             const next = { ...state };
+
+            const liveProviders = providers.filter(p => p && !p.isUiInstance);
+            const tasksOf = (p) => (p.tasks?.length ? p.tasks : [p]);
+
+            // Task ids that already occupy a slot, so a groupId fallback never
+            // steals a source another widget is already displaying.
+            const boundTaskIds = new Set();
+            for (const t of Object.values(state)) {
+                if (t && !t.virtual && !t.is_recorded) boundTaskIds.add(t.originalId || t.id);
+            }
+
+            // Resolve a device-safe rebind target for an orphaned reference.
+            // 1) Same device returned: a provider still exposes the exact id.
+            // 2) Legacy id-changing provider: rebind by groupId ONLY when it is
+            //    unambiguous (exactly one connected, unbound candidate). Two
+            //    boards sharing a groupId therefore never cross-bind.
+            const findTarget = (refId, groupId) => {
+                for (const p of liveProviders) {
+                    const match = tasksOf(p).find(t => t.id === refId);
+                    if (match) return { provider: p, task: match };
+                }
+                if (!groupId) return null;
+                const candidates = [];
+                for (const p of liveProviders) {
+                    const match = tasksOf(p).find(
+                        t => t.groupId === groupId && !boundTaskIds.has(t.id)
+                    );
+                    if (match) candidates.push({ provider: p, task: match });
+                }
+                return candidates.length === 1 ? candidates[0] : null;
+            };
+
+            // Rebind a single source reference (primary input or extra channel).
+            // Without this an extra channel keeps a dead id after a reconnect and
+            // its trace silently disappears instead of reporting an error.
+            const rebindSource = (source) => {
+                if (!source || source.virtual || source.is_recorded) return source;
+                if (liveProviders.some(p => p.id === source.providerId)) return source;
+                const target = findTarget(source.originalId || source.id, source.groupId);
+                if (!target) return source;
+                changed = true;
+                return {
+                    ...source,
+                    id: target.task.id,
+                    originalId: target.task.id,
+                    providerId: target.provider.id,
+                    name: target.task.name || source.name,
+                    config: { ...source.config, ...target.task.config },
+                };
+            };
+
             for (const [idx, task] of Object.entries(next)) {
-                if (!task || task.virtual || task.is_recorded) continue;
-                // If the task's provider is already present, nothing to do
-                if (providers.some(p => p.id === task.providerId)) continue;
-                // Find a provider that has a task with the same groupId
-                for (const p of providers) {
-                    if (p.isUiInstance) continue;
-                    const tasks = p.tasks?.length ? p.tasks : [p];
-                    const match = tasks.find(t => t.groupId === task.groupId);
-                    if (match) {
+                if (!task) continue;
+
+                let updated = task;
+                if (!task.virtual && !task.is_recorded
+                    && !liveProviders.some(p => p.id === task.providerId)) {
+                    const target = findTarget(task.originalId || task.id, task.groupId);
+                    if (target) {
                         const cacheKey = taskIdentity(task);
-                        const updated = {
+                        updated = {
                             ...task,
-                            id: match.id,
-                            originalId: match.id,
-                            providerId: p.id,
-                            name: match.name || task.name,
-                            config: { ...task.config, ...match.config },
+                            id: target.task.id,
+                            originalId: target.task.id,
+                            providerId: target.provider.id,
+                            name: target.task.name || task.name,
+                            config: { ...task.config, ...target.task.config },
                         };
-                        next[idx] = updated;
                         taskInstanceCache.set(cacheKey, updated);
                         changed = true;
-                        break;
                     }
                 }
+
+                const primary = updated.inputs?.source;
+                const reboundPrimary = rebindSource(primary);
+                const reboundExtra = (updated.extraChannels || []).map(rebindSource);
+
+                if (reboundPrimary !== primary
+                    || reboundExtra.some((c, i) => c !== (updated.extraChannels || [])[i])) {
+                    updated = {
+                        ...updated,
+                        inputs: primary ? { ...updated.inputs, source: reboundPrimary } : updated.inputs,
+                        extraChannels: reboundExtra,
+                    };
+                }
+
+                if (updated !== task) next[idx] = updated;
             }
             return changed ? next : state;
         }

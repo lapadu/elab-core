@@ -7,6 +7,13 @@ E-Lab dispatcher and the workbench.
 > (custom UI plugins). For a high-level project overview see
 > [overview.md](overview.md) and [classes.md](classes.md).
 
+> **Client paths:** This guide uses the direct Python client path with
+> `ManifestBuilder` and Socket.IO. An external script using `elab_api.LocalNode`
+> communicates through the Local API Bridge instead. Both paths can register
+> the same manifest concepts, but a JavaScript UI plugin is only the browser
+> presentation layer and is not a Python client or a Bridge connection. See
+> [local_api_bridge.md](local_api_bridge.md) for the Bridge workflow.
+
 ## 1. Architecture in 30 seconds
 
 ```text

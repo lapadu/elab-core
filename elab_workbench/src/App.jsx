@@ -417,6 +417,7 @@ export default function App() {
               config: { mode: 'rising', level: 0 },
               symbol: 'arrow_up',
               virtual: true,
+              tags: ['Trigger', 'Edge'],
               ui: { mode: 'generic' }
           },
           {
@@ -427,6 +428,7 @@ export default function App() {
               config: { mode: 'falling', level: 0 },
               symbol: 'arrow_down',
               virtual: true,
+              tags: ['Trigger', 'Edge'],
               ui: { mode: 'generic' }
           },
           {
@@ -437,6 +439,7 @@ export default function App() {
               config: { mode: 'level', level: 0 },
               symbol: 'line',
               virtual: true,
+              tags: ['Trigger', 'Level'],
               ui: { mode: 'generic' }
           }
       ];
@@ -502,12 +505,13 @@ export default function App() {
                 is_recorded: true,
                 session_id: p.session_id,
                 ui: recUi,
+                tags: [...(t.tags || []), 'Recorded'],
             });
         });
       });
   
   
-      return { 'Sensoren': sensorList, 'Aktoren': actorList, 'Generatoren': generatorList, 'Math': mathList, 'Measures': measureList, 'Recorded': recordedList, 'Triggers': triggerList };
+      return { 'Sensors': sensorList, 'Actuators': actorList, 'Generators': generatorList, 'Math': mathList, 'Measures': measureList, 'Recorded': recordedList, 'Triggers': triggerList };
   }, [providers, recordedTasks]);
 
     const availableTaskMap = useMemo(() => {
@@ -542,7 +546,12 @@ export default function App() {
   
     const placeTaskInSlot = useCallback((index, task) => {
       dispatchSlots({ type: 'DROP_TASK', index, baseTask: task });
-      dispatcher.assignTaskToSlot(index, task.id);
+      // Register the slot under the id the task actually streams with
+      // (originalId for factory instances). The dispatcher matches incoming
+      // data_stream sourceIds against this value for selective recording, so a
+      // mismatch would silently drop virtual sources (e.g. the browser camera)
+      // from the recording.
+      dispatcher.assignTaskToSlot(index, task.originalId || task.id);
     }, [dispatchSlots]);
 
     const bindTaskToMeasureSlot = useCallback((slotIndex, droppedTask) => {
@@ -683,22 +692,23 @@ export default function App() {
     const handleUpdateTask = useCallback((index, updatedTask) => {
       dispatchSlots({ type: 'UPDATE_TASK', index, task: updatedTask });
 
-      // Detect meta changes (color, name) and propagate to server
+      // Persist alias/colour through the dispatcher. It decides whether the
+      // value is stored server-side or pushed to a device that keeps its own
+      // configuration, so the setting survives a reload either way.
       const currentTask = slotsRef.current[index];
       if (currentTask) {
-        const metaChanges = {};
+        const taskId = currentTask.originalId || currentTask.id;
         if (updatedTask.color && updatedTask.color !== currentTask.color) {
-          metaChanges.color = updatedTask.color;
+          dispatcher.setTaskColor(taskId, updatedTask.color);
         }
-        if (updatedTask.name && updatedTask.name !== currentTask.name) {
-          metaChanges.name = updatedTask.name;
+        if (updatedTask.alias !== currentTask.alias) {
+          dispatcher.setTaskAlias(taskId, updatedTask.alias || null);
         }
-        if (Object.keys(metaChanges).length > 0) {
-          const providerId = `prov_${currentTask.originalId || currentTask.id}`;
-          dispatcher.sendControlCommand(providerId, {
-            action: 'update_meta',
-            payload: metaChanges,
-          });
+        if (updatedTask.deviceName !== currentTask.deviceName && currentTask.deviceId) {
+          dispatcher.setDeviceName(currentTask.deviceId, updatedTask.deviceName || null);
+        }
+        if (updatedTask.decimals !== currentTask.decimals) {
+          dispatcher.setTaskDecimals(taskId, updatedTask.decimals ?? null);
         }
       }
     }, [dispatchSlots]);

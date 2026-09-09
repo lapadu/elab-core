@@ -1,5 +1,5 @@
 import React, { useState, memo, useMemo, useEffect, useRef, useCallback } from "react";
-import { Icons } from "../utils/Shared.jsx";
+import { Icons, displayName } from "../utils/Shared.jsx";
 import { RemoteWidgetLoader } from "./WidgetLoader.jsx";
 import { PLUGIN_REGISTRY } from "./PluginRegistry.jsx";
 import { factoryManager } from "../services/FactoryManager.js";
@@ -20,8 +20,14 @@ const WidgetMenuPanel = ({ task, onUpdateTask, viewRenderers, activeRenderer, re
     onUpdateTask({ ...task, color: e.target.value });
   };
 
-  const handleNameChange = (e) => {
-    onUpdateTask({ ...task, name: e.target.value });
+  // Renaming sets an alias; the manifest name stays intact so the operator can
+  // always tell which physical task an alias belongs to.
+  const handleAliasChange = (e) => {
+    onUpdateTask({ ...task, alias: e.target.value });
+  };
+
+  const handleDeviceNameChange = (e) => {
+    onUpdateTask({ ...task, deviceName: e.target.value });
   };
 
   const ConfigComponent = activeRenderer?.component;
@@ -34,11 +40,26 @@ const WidgetMenuPanel = ({ task, onUpdateTask, viewRenderers, activeRenderer, re
 
       <div className="space-y-3 text-xs">
         <div className="bg-slate-950 border border-slate-800 rounded-lg p-3">
-          <label className="text-slate-400 block mb-2">Name</label>
+          <label className="text-slate-400 block mb-2">Alias</label>
           <input
             type="text"
-            value={task.name || ""}
-            onChange={handleNameChange}
+            value={task.alias ?? ""}
+            placeholder={task.name || ""}
+            onChange={handleAliasChange}
+            className="w-full bg-slate-900 text-slate-200 text-xs p-2 rounded border border-slate-700 focus:border-blue-500 outline-none"
+          />
+          <div className="text-[10px] text-slate-500 mt-1 truncate" title={task.name}>
+            {task.name}
+          </div>
+        </div>
+
+        <div className="bg-slate-950 border border-slate-800 rounded-lg p-3">
+          <label className="text-slate-400 block mb-2">Device Name</label>
+          <input
+            type="text"
+            value={task.deviceName ?? ""}
+            placeholder={task.deviceId || ""}
+            onChange={handleDeviceNameChange}
             className="w-full bg-slate-900 text-slate-200 text-xs p-2 rounded border border-slate-700 focus:border-blue-500 outline-none"
           />
         </div>
@@ -108,6 +129,10 @@ export const WidgetHost = memo(
     const widgetHostRef = useRef(null);
     const touchHeaderDragRef = useRef(null);
     const [showWidgetMenu, setShowWidgetMenu] = useState(false);
+    // A RAW capture deliberately drops WiFi, so the provider goes "offline"
+    // mid-capture. Suppress the Connection-Lost overlay while a widget reports
+    // it is awaiting RAW data, so the amber RAW overlay stays visible instead.
+    const [rawCaptureActive, setRawCaptureActive] = useState(false);
     const [focusMode, setFocusMode] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [activeViewId, setActiveViewId] = useState(() => {
@@ -239,6 +264,7 @@ export const WidgetHost = memo(
         dispatcherClient,
         sourcePlugin,
         onSubTaskDrop: wrappedOnAddChannel,
+        onRawCaptureAwaitingChange: setRawCaptureActive,
         dataStreams: effectiveStreamBuffers
           ? Object.fromEntries(
               Array.from(effectiveStreamBuffers.entries()).map(([id, buffer]) => [
@@ -434,8 +460,8 @@ export const WidgetHost = memo(
               className="w-2 h-2 rounded-full shrink-0"
               style={{ backgroundColor: task.color }}
             />
-            <span className="text-xs font-bold text-slate-300 truncate">
-              {task.name}
+            <span className="text-xs font-bold text-slate-300 truncate" title={task.name}>
+              {displayName(task)}
             </span>
             {task.extraChannels?.length > 0 && (
               <span
@@ -554,8 +580,8 @@ export const WidgetHost = memo(
               className="w-2 h-2 rounded-full shrink-0"
               style={{ backgroundColor: task.color }}
             />
-            <span className="text-xs font-bold text-slate-300 truncate">
-              {task.name}
+            <span className="text-xs font-bold text-slate-300 truncate" title={task.name}>
+              {displayName(task)}
             </span>
             {task.extraChannels?.length > 0 && (
               <span
@@ -660,7 +686,7 @@ export const WidgetHost = memo(
         </div>
 
         {/* CONTENT */}
-        <div className={`relative flex-1 min-h-0 ${isOffline ? "grayscale opacity-20" : ""}`}>
+        <div className={`relative flex-1 min-h-0 ${isOffline && !rawCaptureActive ? "grayscale opacity-20" : ""}`}>
           {showWidgetMenu ? (
             <WidgetMenuPanel
               task={task}
@@ -705,7 +731,7 @@ export const WidgetHost = memo(
         </div>
 
         {/* OFFLINE OVERLAY */}
-        {isOffline && (
+        {isOffline && !rawCaptureActive && (
           <div className="absolute inset-0 z-50 bg-slate-950/80 backdrop-blur-[2px] flex flex-col items-center justify-center">
             <div className="bg-red-500/10 p-4 rounded-full mb-3 border border-red-500/20 animate-pulse">
               <Icons.WifiOff className="text-red-500" size={32} />

@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 
 from .context import StateContext
 from .provider_registry import ProviderRegistry
+from ..auth import is_persist_capable, resolve_device_id
 
 logger = logging.getLogger(__name__)
 
@@ -42,84 +43,63 @@ class TaskMetaStore:
                 for provider in p_list:
                     for task in provider.get('tasks', []):
                         if task.get('id') == task_id:
-                            return bool(provider.get('persistConfig', False))
+                            return is_persist_capable(provider)
         return False
+
+    def _find_task(self, task_id: str):
+        """Return ``(provider, task)`` for *task_id*, or ``(None, None)``."""
+        for p_list in self._providers.providers.values():
+            for provider in p_list:
+                for task in provider.get('tasks', []):
+                    if task.get('id') == task_id:
+                        return provider, task
+        return None, None
+
+    def _set_meta_field(self, task_id: str, field: str, value: Any) -> bool:
+        """Apply a meta field and persist it where the device model dictates.
+
+        Devices that can store configuration themselves receive a
+        ``persist_config`` push and stay the single source of truth, so their
+        settings travel with the hardware. For everything else the dispatcher
+        keeps the value on the device's behalf.
+        """
+        with self._ctx.lock:
+            provider, task = self._find_task(task_id)
+            if provider is None or task is None:
+                return False
+            task[field] = value
+            if is_persist_capable(provider):
+                sid = provider.get('sid')
+                if sid:
+                    self._ctx.socketio.emit(
+                        'persist_config', {'task_id': task_id, field: value}, room=sid
+                    )
+            elif self._ctx.config_store:
+                setter = getattr(self._ctx.config_store, f'set_task_{field}')
+                setter(task_id, value, resolve_device_id(provider))
+            return True
 
     def set_task_alias(self, task_id: str, alias: Optional[str]) -> bool:
-        """Set a user-defined alias for a task.
-
-        If the provider self-persists, the alias is forwarded to the provider.
-        Otherwise, the dispatcher stores it in its ConfigStore.
-        Returns True if the task was found and the alias applied.
-        """
-        with self._ctx.lock:
-            for p_list in self._providers.providers.values():
-                for provider in p_list:
-                    for task in provider.get('tasks', []):
-                        if task.get('id') == task_id:
-                            task['alias'] = alias
-                            if provider.get('persistConfig', False):
-                                # Forward to the provider to persist
-                                sid = provider.get('sid')
-                                if sid:
-                                    self._ctx.socketio.emit('persist_config', {
-                                        'task_id': task_id,
-                                        'alias': alias
-                                    }, room=sid)
-                            elif self._ctx.config_store:
-                                self._ctx.config_store.set_task_alias(task_id, alias)
-                            return True
-        return False
+        """Set a user-defined alias for a task (e.g. 'Eingang Vorstufe')."""
+        return self._set_meta_field(task_id, 'alias', alias)
 
     def set_task_color(self, task_id: str, color: Optional[str]) -> bool:
-        """Set a color override for a task.
-
-        If the provider self-persists, the color is forwarded to the provider.
-        Otherwise, the dispatcher stores it in its ConfigStore.
-        Returns True if the task was found and the color applied.
-        """
-        with self._ctx.lock:
-            for p_list in self._providers.providers.values():
-                for provider in p_list:
-                    for task in provider.get('tasks', []):
-                        if task.get('id') == task_id:
-                            task['color'] = color
-                            if provider.get('persistConfig', False):
-                                sid = provider.get('sid')
-                                if sid:
-                                    self._ctx.socketio.emit('persist_config', {
-                                        'task_id': task_id,
-                                        'color': color
-                                    }, room=sid)
-                            elif self._ctx.config_store:
-                                self._ctx.config_store.set_task_color(task_id, color)
-                            return True
-        return False
+        """Set a color override for a task."""
+        return self._set_meta_field(task_id, 'color', color)
 
     def set_task_decimals(self, task_id: str, decimals: Optional[int]) -> bool:
-        """Set a decimal places (precision) override for a task.
-
-        Returns True if the task was found and decimals applied.
-        """
-        with self._ctx.lock:
-            for p_list in self._providers.providers.values():
-                for provider in p_list:
-                    for task in provider.get('tasks', []):
-                        if task.get('id') == task_id:
-                            task['decimals'] = decimals
-                            if self._ctx.config_store:
-                                self._ctx.config_store.set_task_decimals(task_id, decimals)
-                            return True
-        return False
+        """Set a decimal places (precision) override for a task."""
+        return self._set_meta_field(task_id, 'decimals', decimals)
 
     def apply_stored_config(self, manifest: Dict[str, Any]) -> None:
         """Apply stored configuration (alias, color, decimals) to a manifest on registration.
 
-        Only applies if the provider does NOT self-persist (persistConfig == false).
+        Skipped for devices that persist their own configuration - their
+        manifest already carries the authoritative values.
         """
         if not self._ctx.config_store:
             return
-        if manifest.get('persistConfig', False):
+        if is_persist_capable(manifest):
             return
         for task in manifest.get('tasks', []) or []:
             task_id = task.get('id')

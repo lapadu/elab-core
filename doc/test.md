@@ -1,70 +1,70 @@
-# E-Lab – Testausführung & Coverage
+# E-Lab - Test Execution & Coverage
 
-## Voraussetzungen
+## Requirements
 
 ```bash
-# Virtual Environment aktivieren
+# Activate the virtual environment
 .venv\Scripts\activate        # Windows
 source .venv/bin/activate     # Linux/Mac
 
-# Test-Abhängigkeiten (in requirements.txt enthalten)
+# Test dependencies (included in requirements.txt)
 pip install -r requirements.txt
 ```
 
 ---
 
-## Backend-Tests (pytest)
+## Backend Tests (pytest)
 
-### Alle Tests ausführen
+### Run all tests
 
 ```bash
 pytest -q
 ```
 
-### Mit ausführlicher Ausgabe
+### Verbose output
 
 ```bash
 pytest -v
 ```
 
-### Einzelnes Testmodul
+### Individual test module
 
 ```bash
 pytest tests/test_state.py -v
 pytest tests/integration/test_sockets.py -v
 ```
 
-### Coverage-Report (Terminal)
+### Coverage report (terminal)
 
 ```bash
 pytest --cov=elab_server --cov-report=term-missing
 ```
 
-### Coverage-Report (HTML)
+### Coverage report (HTML)
 
 ```bash
 pytest --cov=elab_server --cov-report=html
-# Öffnet sich unter htmlcov/index.html
+# Open htmlcov/index.html
 ```
 
 ---
 
-## Frontend-Tests (Vitest)
+## Frontend Tests (Vitest)
 
-### Alle Tests ausführen
+### Run all tests
 
 ```bash
 cd elab_workbench
 npm test
 ```
 
-### Watch-Mode (entwicklungsbegleitend)
+### Watch mode (during development)
 
 ```bash
 npm test -- --watch
 ```
 
-### Coverage-Report
+### Coverage report
 
 ```bash
 npm test -- --coverage
@@ -72,67 +72,67 @@ npm test -- --coverage
 
 ---
 
-## Teststruktur
+## Test Structure
 
 ```
-conftest.py                        # Globale Fixtures (sys.path) – im Repo-Root
+conftest.py                        # Global fixtures (sys.path) - in the repository root
 tests/
-├── test_decoders.py               # Decoder-Logik
-├── test_decoders_extended.py      # Erweiterte Decoder-Tests
-├── test_discovery.py              # UDP-Discovery
-├── test_manifest_builder.py       # Manifest-Validierung
-├── test_plugin_security.py        # Plugin-URL-Sicherheit
-├── test_process_manager.py        # Client-Prozessverwaltung
-├── test_replayer.py               # Session-Replayer
-├── test_state.py                  # SystemState-Registry
+├── test_decoders.py               # Decoder logic
+├── test_decoders_extended.py      # Extended decoder tests
+├── test_discovery.py              # UDP discovery
+├── test_manifest_builder.py       # Manifest validation
+├── test_plugin_security.py        # Plugin URL security
+├── test_process_manager.py        # Client process management
+├── test_replayer.py               # Session replayer
+├── test_state.py                  # SystemState registry
 └── integration/
-    ├── conftest.py                # Flask-SocketIO Test-Client Fixture
-    ├── test_sockets.py            # Socket.IO Event-Handler (End-to-End)
-    └── test_sessions.py           # Session-Recording & Replay
+    ├── conftest.py                # Flask-SocketIO test client fixture
+    ├── test_sockets.py            # Socket.IO event handlers (end-to-end)
+    └── test_sessions.py           # Session recording and replay
 
 elab_workbench/src/
 ├── services/*.test.js             # DispatcherClient, FactoryManager
 ├── plugins/core/*.test.js         # PluginBuilder
-├── reducers/*.test.js             # Slot-Reducer
-└── utils/*.test.js                # FFT, Downsampling, Streaming, Events
+├── reducers/*.test.js             # Slot reducer
+└── utils/*.test.js                # FFT, downsampling, streaming, events
 ```
 
 ---
 
-## Integration-Tests
+## Integration Tests
 
-Die Integration-Tests unter `tests/integration/` starten den kompletten Server-Stack
-in-process (kein Netzwerk-Port nötig) über Flask-SocketIOs eingebauten Test-Client.
+The integration tests in `tests/integration/` start the complete server stack
+in-process (no network port required) through Flask-SocketIO's built-in test client.
 
 ```bash
-# Nur Integration-Tests
+# Integration tests only
 pytest tests/integration/ -v
 ```
 
-Getestete Bereiche:
+Covered areas:
 
-- Verbindungsaufbau & Client-Registrierung
-- Provider-Registrierung & Manifest-Validierung
-- `data_stream`-Weiterleitung an UI-Clients
-- Task-Assignment & Slot-Verwaltung
-- `cmd_control`-Forwarding
-- Session-Aufnahme (SQLite-Verifizierung)
-- Session-Verwaltung & Löschung (inkl. Path-Traversal-Schutz)
-- Replay-Laden & Recorded-Provider-Auflösung
+- Connection establishment and client registration
+- Provider registration and manifest validation
+- `data_stream` forwarding to UI clients
+- Task assignment and slot management
+- `cmd_control` forwarding
+- Session recording (SQLite verification)
+- Session management and deletion (including path traversal protection)
+- Replay loading and recorded provider resolution
 
 ---
 
-## Konfiguration
+## Configuration
 
-| Datei             | Zweck                                     |
+| File              | Purpose                                   |
 | ----------------- | ----------------------------------------- |
-| `pytest.ini`      | Test-Discovery, Filter, Default-Argumente |
-| `setup.cfg`       | Pylint-Konfiguration                      |
-| `vitest.setup.js` | Frontend-Test-Setup (jsdom, Mocks)        |
+| `pytest.ini`      | Test discovery, filters, default arguments |
+| `setup.cfg`       | Pylint configuration                      |
+| `vitest.setup.js` | Frontend test setup (jsdom, mocks)        |
 
 ---
 
-## CI-Empfehlung
+## CI Recommendation
 
 ```bash
 # Backend

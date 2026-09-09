@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Icons, COLOR_PALETTE } from "../../../utils/Shared";
+import { Icons, COLOR_PALETTE, displayName } from "../../../utils/Shared";
 
 /**
  * Floating channel menu that appears when clicking the channel indicator.
@@ -129,8 +129,11 @@ const ChannelMenu = ({
               />
 
               {/* Name */}
-              <span className="text-[11px] font-medium text-slate-300 truncate flex-1 min-w-0">
-                {s.name}
+              <span
+                className="text-[11px] font-medium text-slate-300 truncate flex-1 min-w-0"
+                title={s.name}
+              >
+                {displayName(s)}
               </span>
 
 {/* Actions from manifest */}

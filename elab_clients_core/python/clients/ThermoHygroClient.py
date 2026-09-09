@@ -19,7 +19,6 @@ import json
 import logging
 import os
 import random
-import uuid
 import asyncio
 import threading
 import argparse
@@ -57,6 +56,9 @@ except ImportError:
 
 try:
     from elab_clients_core.python.shared.discovery import discover_dispatcher  # type: ignore[import-not-found]
+    from elab_clients_core.python.shared.identity import (  # type: ignore[import-not-found]
+        resolve_device_identity,
+    )
     from elab_clients_core.python.shared.overrides import (  # type: ignore[import-not-found]
         load_overrides,
         save_overrides,
@@ -64,6 +66,7 @@ try:
     from elab_clients_core.python.shared.auth import ProviderAuth  # type: ignore[import-not-found]
 except ImportError:
     from shared.discovery import discover_dispatcher  # type: ignore[import-not-found]
+    from shared.identity import resolve_device_identity  # type: ignore[import-not-found]
     from shared.overrides import (  # type: ignore[import-not-found]
         load_overrides,
         save_overrides,
@@ -91,35 +94,53 @@ logger = logging.getLogger("ThermoHygroClient")
 GUID_FILE = os.path.join(core_clients_dir, "thermo_hygro_guid.txt")
 
 
-def get_or_create_guid() -> str:
-    """Retrieves a persistent GUID from disk or creates a new UUIDv4 if not existing."""
+def _migrate_legacy_guid() -> None:
+    """Remove the pre-2.1 GUID file that was shared by every checkout.
+
+    It lived inside the repository, so all instances derived the same id and
+    the dispatcher could not tell two sensors apart.
+    """
     if os.path.exists(GUID_FILE):
         try:
-            with open(GUID_FILE, "r", encoding="utf-8") as f:
-                saved_guid = f.read().strip()
-                if saved_guid:
-                    return saved_guid
-        except Exception as exc:
-            logger.warning("Could not read GUID file: %s", exc)
-
-    new_guid = str(uuid.uuid4())
-    try:
-        os.makedirs(os.path.dirname(GUID_FILE), exist_ok=True)
-        with open(GUID_FILE, "w", encoding="utf-8") as f:
-            f.write(new_guid)
-        logger.info("Created new persistent provider GUID: %s", new_guid)
-    except Exception as exc:
-        logger.warning("Could not write GUID file: %s", exc)
-    return new_guid
+            os.remove(GUID_FILE)
+            logger.info(
+                "Removed legacy GUID file %s; identity now lives in ~/.elab/identity.",
+                GUID_FILE,
+            )
+        except OSError as exc:
+            logger.warning("Could not remove legacy GUID file: %s", exc)
 
 
 GOVEE_COMPANY_ID = 0xEC88
 UDP_DISCOVERY_PORT = 5005
-PROVIDER_GUID = get_or_create_guid()
-DEVICE_ID = f"thermo_hygro_{PROVIDER_GUID}"
+DEVICE_MODEL = "govee_thermo_hygro"
+
+_migrate_legacy_guid()
+
+
+def _resolve_identity(bound_address: Optional[str]) -> Any:
+    """Resolve this wrapper's identity, preferring the bound sensor's BLE MAC.
+
+    An unbound wrapper has no hardware to point at, so it runs on a locally
+    persisted id. Once an operator picks a sensor its MAC becomes the anchor:
+    the identity then follows the thermometer rather than the host, which is
+    what keeps several sensors apart in a shared measurement.
+    """
+    if bound_address:
+        return resolve_device_identity(
+            DEVICE_MODEL,
+            anchor_value=str(bound_address),
+            anchor="ble_mac",
+            name="Govee Thermo & Hygro Sensor",
+        )
+    return resolve_device_identity(DEVICE_MODEL, name="Govee Thermo & Hygro Sensor")
+
+
+IDENTITY = _resolve_identity(None)
+DEVICE_ID = IDENTITY.device_id
 PROVIDER_ID = DEVICE_ID
-TEMP_TASK_ID = "temp_task"
-HUMIDITY_TASK_ID = "humidity_task"
+TEMP_TASK_ID = IDENTITY.task_id("temp")
+HUMIDITY_TASK_ID = IDENTITY.task_id("humidity")
 OVERRIDES_FILE = os.path.join(core_clients_dir, "thermo_hygro_overrides.json")
 
 # Global operating state
@@ -146,19 +167,24 @@ def create_manifest() -> Dict[str, Any]:
         name="Govee Thermo & Hygro Sensor",
         category="HARDWARE",
         persist_config=True,
+        device_id=IDENTITY.device_id,
+        model=IDENTITY.model,
+        device_anchor=IDENTITY.anchor,
+        device_name=IDENTITY.name,
     )
 
     # Task 1: Temperature Sensor (°C / °F) - Rose Color
     builder.add_task(
         task_id=TEMP_TASK_ID,
-        name="Temperatur",
+        name="Temperature",
         task_type="SENSOR",
         color="#f43f5e",
+        tags=["Temperature", "Climate", "BLE", "Sensor"],
         config={
             "unit": "°C",
             "supportedUnits": ["°C", "°F"],
             "targetAddress": None,
-            "targetName": "Kein Sensor gewählt",
+            "targetName": "No Sensor Selected",
             "isScanning": False,
             "discoveredDevices": [],
             "range": [-20.0, 50.0],
@@ -188,14 +214,15 @@ def create_manifest() -> Dict[str, Any]:
     # Task 2: Humidity Sensor (%) - Cyan Color
     builder.add_task(
         task_id=HUMIDITY_TASK_ID,
-        name="Luftfeuchtigkeit",
+        name="Humidity",
         task_type="SENSOR",
         color="#06b6d4",
+        tags=["Humidity", "Climate", "BLE", "Sensor"],
         config={
             "unit": "%",
             "supportedUnits": ["%"],
             "targetAddress": None,
-            "targetName": "Kein Sensor gewählt",
+            "targetName": "No Sensor Selected",
             "isScanning": False,
             "discoveredDevices": [],
             "range": [0.0, 100.0],
@@ -365,6 +392,44 @@ def ble_detection_callback(device: Any, advertisement_data: Any) -> None:
 
 
 # --- SOCKET.IO EVENT HANDLERS ---
+def rebind_identity(bound_address: Optional[str]) -> None:
+    """Re-register under the identity derived from the newly bound sensor.
+
+    The dispatcher rejects a second provider claiming ids it already knows, so
+    the previous registration has to be withdrawn before the new one is sent.
+    """
+    global IDENTITY, DEVICE_ID, PROVIDER_ID, TEMP_TASK_ID, HUMIDITY_TASK_ID
+    global DEVICE_MANIFEST, auth
+
+    new_identity = _resolve_identity(bound_address)
+    if new_identity.device_id == DEVICE_ID:
+        return
+
+    old_provider_id = PROVIDER_ID
+    IDENTITY = new_identity
+    DEVICE_ID = new_identity.device_id
+    PROVIDER_ID = DEVICE_ID
+    TEMP_TASK_ID = new_identity.task_id("temp")
+    HUMIDITY_TASK_ID = new_identity.task_id("humidity")
+
+    DEVICE_MANIFEST = create_manifest()
+    load_overrides(DEVICE_MANIFEST, OVERRIDES_FILE)
+    sync_manifest_from_state()
+
+    if not sio.connected:
+        return
+    try:
+        sio.emit("deregister_provider", {"provider_id": old_provider_id})
+        auth = ProviderAuth(DEVICE_ID)
+        auth.bind(sio)
+        auth.send_register(sio, DEVICE_MANIFEST)
+        logger.info(
+            "🆔 Re-registered as %s (anchor=%s)", DEVICE_ID, new_identity.anchor
+        )
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.error("Failed to re-register under new identity: %s", exc)
+
+
 @sio.event
 def connect():
     """Triggered on dispatcher connection."""
@@ -427,6 +492,7 @@ def execute_command(data: Dict[str, Any]) -> None:
         if DEVICE_MANIFEST:
             save_overrides(DEVICE_MANIFEST, OVERRIDES_FILE)
             logger.info("💾 Saved device selection to overrides: %s", OVERRIDES_FILE)
+        rebind_identity(target_address)
 
     elif action == "set_unit":
         req_unit = payload.get("unit")
@@ -505,9 +571,32 @@ async def ble_scan_loop(simulate: bool) -> None:
                 pass
 
 
+def _persisted_target_address() -> Optional[str]:
+    """Read the bound sensor MAC straight from the overrides file.
+
+    The manifest cannot be built first: its task ids depend on the identity,
+    which in turn depends on the bound sensor.
+    """
+    try:
+        with open(OVERRIDES_FILE, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    for entry in data.values():
+        if not isinstance(entry, dict):
+            continue
+        address = (entry.get("config") or {}).get("targetAddress")
+        if address:
+            return str(address)
+    return None
+
+
 def main() -> None:
     """Main execution entry point."""
     global DEVICE_MANIFEST, target_address, target_name, current_unit
+    global IDENTITY, DEVICE_ID, PROVIDER_ID, TEMP_TASK_ID, HUMIDITY_TASK_ID, auth
 
     parser = argparse.ArgumentParser(description="E-Lab Govee Thermo & Hygro Client")
     parser.add_argument(
@@ -524,6 +613,16 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    # 0. Anchor the identity on the previously bound sensor, if any.
+    bound = _persisted_target_address()
+    if bound:
+        IDENTITY = _resolve_identity(bound)
+        DEVICE_ID = IDENTITY.device_id
+        PROVIDER_ID = DEVICE_ID
+        TEMP_TASK_ID = IDENTITY.task_id("temp")
+        HUMIDITY_TASK_ID = IDENTITY.task_id("humidity")
+        auth = ProviderAuth(DEVICE_ID)
+
     # 1. Build initial manifest & apply saved persistence overrides
     DEVICE_MANIFEST = create_manifest()
     load_overrides(DEVICE_MANIFEST, OVERRIDES_FILE)
@@ -538,8 +637,9 @@ def main() -> None:
             current_unit = cfg.get("unit")
 
     logger.info(
-        "📦 Provider initialized (GUID: %s). Target: %s (%s) | Unit: %s",
-        PROVIDER_GUID,
+        "📦 Provider initialized: %s (anchor=%s). Target: %s (%s) | Unit: %s",
+        DEVICE_ID,
+        IDENTITY.anchor,
         target_name,
         target_address,
         current_unit,

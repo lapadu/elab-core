@@ -60,11 +60,13 @@ try:
     # Preferred: absolute import that always resolves when the project root is
     # on sys.path (server-spawned and dev workflows).
     from elab_clients_core.python.shared.discovery import discover_dispatcher  # type: ignore[import-not-found]
+    from elab_clients_core.python.shared.identity import resolve_device_identity  # type: ignore[import-not-found]
     from elab_clients_core.python.shared.auth import ProviderAuth  # type: ignore[import-not-found]
 except ImportError:
     # Fallback: launched from the clients dir. ``_python_dir`` is on sys.path
     # above so ``from shared.X import …`` resolves cleanly.
     from shared.discovery import discover_dispatcher  # type: ignore[import-not-found]
+    from shared.identity import resolve_device_identity  # type: ignore[import-not-found]
     from shared.auth import ProviderAuth  # type: ignore[import-not-found]
 
 from elab_server.manifest_builder import ManifestBuilder
@@ -77,10 +79,17 @@ DEFAULT_PLAYBACK_INTERVAL_MS = 20  # 50 Hz (matches the C# default)
 QUEUE_OVERFLOW_LIMIT = 2000  # Drop the buffer if it grows beyond this (C# parity)
 CHART_WINDOW = 4000  # Number of received samples kept in the live chart window
 
-INSTANCE_ID = int(time.time() * 1000) % 100000
-PROVIDER_ID = f"py_voltage_actuator_{INSTANCE_ID}"
+DEVICE_MODEL = "py_voltage_actuator"
 PROVIDER_NAME = "Python Voltage Actuator"
-TASK_ID = f"{PROVIDER_ID}_v_out"
+# A persisted id keeps the pairing across restarts. Set ELAB_ACTUATOR_INSTANCE
+# to run several independent actuators on one host.
+IDENTITY = resolve_device_identity(
+    DEVICE_MODEL,
+    instance=os.environ.get("ELAB_ACTUATOR_INSTANCE"),
+    name=PROVIDER_NAME,
+)
+PROVIDER_ID = IDENTITY.device_id
+TASK_ID = IDENTITY.task_id("v_out")
 
 # --- LOGGING ---
 logging.basicConfig(
@@ -96,13 +105,20 @@ logger = logging.getLogger(PROVIDER_NAME)
 # ==========================================
 def build_manifest() -> dict[str, Any]:
     """Builds the actuator manifest with a generic actuator UI template."""
-    builder = ManifestBuilder(PROVIDER_ID, PROVIDER_NAME)
+    builder = ManifestBuilder(
+        PROVIDER_ID,
+        PROVIDER_NAME,
+        device_id=IDENTITY.device_id,
+        model=IDENTITY.model,
+        device_anchor=IDENTITY.anchor,
+        device_name=IDENTITY.name,
+    )
     builder.add_task(
         task_id=TASK_ID,
         name="Voltage Output",
         task_type="ACTUATOR",
         color="#22c55e",
-        tags=["Voltage", "Actuator", "Debug"],
+        tags=["Voltage", "Actuator"],
         config={
             "unit": "V",
             "range": [-10, 10],

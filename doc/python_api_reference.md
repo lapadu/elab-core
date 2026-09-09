@@ -2,7 +2,17 @@
 
 _Auto-generated file. Do not edit manually._
 
-Generated: 2026-07-08 12:55:08 UTC
+Generated: 2026-09-08 06:39:46 UTC
+
+## Import
+
+Use the public package import below to connect a script to the E-Lab Bridge:
+
+```python
+from elab_api import DeviceDefinition, LocalNode
+```
+
+The Python package is the runtime client for external scripts. Optional JavaScript UI plugins are loaded by the React workbench for task presentation; they do not connect directly to ZeroMQ or shared memory. See [local_api_bridge.md](local_api_bridge.md) and [plugin_development.md](plugin_development.md) for the distinction.
 
 ## elab_api/__init__.py
 
@@ -14,13 +24,23 @@ LocalNode – the primary user-facing class for external scripts.
 
 ### Classes in elab_api/local_node.py
 
+#### DeviceDefinition
+
+Schema-compatible identity and persistence metadata for a device.
+
+Methods:
+
+- `to_manifest(self) -> Dict[str, Any]`
+  - Return the device definition using ManifestSchema property names.
+Parameters: none
+
 #### LocalNode
 
 Lightweight client that connects an external script to the E-Lab Bridge.
 
 Methods:
 
-- `register_task(self, task_id: str, task_type: str = 'SENSOR', template: str = 'tpl_generic_sensor', config: Optional[List[Dict[str, Any]]] = None, name: Optional[str] = None, color: Optional[str] = None, tags: Optional[List[str]] = None, unit: Optional[str] = None, sample_rate: Optional[int] = None, ui_mode: str = 'generic', ui_url: Optional[str] = None, ui_component_name: Optional[str] = None, ui_integrity: Optional[str] = None) -> None`
+- `register_task(self, task_id: str, task_type: str = 'SENSOR', template: str = 'tpl_generic_sensor', config: Optional[List[Dict[str, Any]]] = None, name: Optional[str] = None, color: Optional[str] = None, tags: Optional[List[str]] = None, unit: Optional[str] = None, sample_rate: Optional[int] = None, ui_mode: str = 'generic', ui_url: Optional[str] = None, ui_component_name: Optional[str] = None, ui_integrity: Optional[str] = None, alias: Optional[str] = None, decimals: Optional[int] = None, group_id: Optional[str] = None, virtual: bool = False, group: Optional[str] = None, actions: Optional[List[Dict[str, Any]]] = None, decoder: Optional[Dict[str, Any]] = None, ui_views: Optional[List[Dict[str, Any]]] = None, ui_default_template: Optional[str] = None) -> None`
   - Register a task with the E-Lab dispatcher via the Bridge.
 Parameters:
 
@@ -39,8 +59,17 @@ Parameters:
 |ui_url|Optional[str]|None|URL to custom JS plugin (mode=custom).|
 |ui_component_name|Optional[str]|None|React component name (mode=custom).|
 |ui_integrity|Optional[str]|None|SRI hash for the plugin script.|
+|alias|Optional[str]|None|Operator-facing display alias.|
+|decimals|Optional[int]|None|Number of decimal places rendered by the UI.|
+|group_id|Optional[str]|None|Functional group identifier within the provider.|
+|virtual|bool|False|Mark the task as a virtual task.|
+|group|Optional[str]|None|Task exclusivity group.|
+|actions|Optional[List[Dict[str, Any]]]|None|Declarative actor actions exposed by the UI.|
+|decoder|Optional[Dict[str, Any]]|None|Decoder definition for transport-to-engineering-unit conversion.|
+|ui_views|Optional[List[Dict[str, Any]]]|None|Additional UI views conforming to the manifest schema.|
+|ui_default_template|Optional[str]|None|Default template used when the task exposes multiple views.|
 
-- `register_math_task(self, task_id: str, template: str = 'system_mean_v1', config: Optional[List[Dict[str, Any]]] = None, name: Optional[str] = None, color: Optional[str] = None, tags: Optional[List[str]] = None, unit: Optional[str] = None) -> None`
+- `register_math_task(self, task_id: str, template: str = 'system_mean_v1', config: Optional[List[Dict[str, Any]]] = None, name: Optional[str] = None, color: Optional[str] = None, tags: Optional[List[str]] = None, unit: Optional[str] = None, alias: Optional[str] = None, decimals: Optional[int] = None, group_id: Optional[str] = None, actions: Optional[List[Dict[str, Any]]] = None, decoder: Optional[Dict[str, Any]] = None) -> None`
   - Register a MATH task with an input slot (like Mean).
 Parameters:
 
@@ -53,6 +82,11 @@ Parameters:
 |color|Optional[str]|None|Default hex color.|
 |tags|Optional[List[str]]|None|Freeform tags.|
 |unit|Optional[str]|None|Measurement unit.|
+|alias|Optional[str]|None|Operator-facing display alias.|
+|decimals|Optional[int]|None|Number of decimal places rendered by the UI.|
+|group_id|Optional[str]|None|Functional group identifier within the provider.|
+|actions|Optional[List[Dict[str, Any]]]|None|Declarative actor actions exposed by the UI.|
+|decoder|Optional[Dict[str, Any]]|None|Decoder definition for transport-to-engineering-unit conversion.|
 
 - `on_config_update(self, task_id: str) -> Callable`
   - Decorator to register a callback for config changes from the UI.

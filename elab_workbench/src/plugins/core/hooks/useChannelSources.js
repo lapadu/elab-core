@@ -43,13 +43,18 @@ export const useChannelSources = (task, onUpdateTask, { singleSource = false } =
   }, [task, onUpdateTask]);
 
   const updateSourceMeta = useCallback((sourceId, key, value) => {
+    // Alias and colour are persisted by the dispatcher (which forwards them to
+    // devices that store their own configuration); everything else stays local.
+    const persist = (taskId) => {
+      if (key === 'color') dispatcher.setTaskColor(taskId, value);
+      else if (key === 'alias') dispatcher.setTaskAlias(taskId, value || null);
+      else if (key === 'decimals') dispatcher.setTaskDecimals(taskId, value ?? null);
+    };
+
     // In single-source mode the task itself is the source.
     if (singleSource) {
       onUpdateTask({ ...task, [key]: value });
-      const targetProvider = task.providerId || task.originalId || task.id;
-      dispatcher.sendControlCommand(`prov_${targetProvider}`, {
-        action: "update_meta", payload: { [key]: value },
-      });
+      persist(task.originalId || task.id);
       return;
     }
 
@@ -67,9 +72,7 @@ export const useChannelSources = (task, onUpdateTask, { singleSource = false } =
     const newExtra = isPrimary ? task.extraChannels : task.extraChannels.map((c) => (c.id === sourceId ? updatedSource : c));
     onUpdateTask({ ...task, inputs: newInputs, extraChannels: newExtra });
 
-    dispatcher.sendControlCommand(`prov_${updatedSource.originalId || updatedSource.id}`, {
-      action: "update_meta", payload: { [key]: value },
-    });
+    persist(updatedSource.originalId || updatedSource.id);
   }, [task, onUpdateTask, singleSource]);
 
   // Reorder channels (drag'n'drop in ChannelMenu). List order = layer order:

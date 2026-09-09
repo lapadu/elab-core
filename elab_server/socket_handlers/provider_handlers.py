@@ -34,12 +34,67 @@ from ._helpers import (
 
 logger = logging.getLogger(__name__)
 
+#: Wire prefix the workbench puts in front of provider/task ids in control
+#: messages. Stripped only at the front - ids may legitimately contain "prov_".
+_PROV_PREFIX = 'prov_'
+
+
+def _strip_prov_prefix(value: str) -> str:
+    """Remove the UI wire prefix from a provider/task id."""
+    if not isinstance(value, str):
+        return ''
+    return value[len(_PROV_PREFIX):] if value.startswith(_PROV_PREFIX) else value
+
+
+def _manifest_supports_action(manifest, action_id):
+    """Return whether a provider manifest declares the requested action."""
+    if not isinstance(manifest, dict) or not isinstance(action_id, str):
+        return False
+    actions = manifest.get('actions', []) or []
+    if any(isinstance(action, dict) and action.get('id') == action_id for action in actions):
+        return True
+    return any(
+        isinstance(task, dict)
+        and any(
+            isinstance(action, dict) and action.get('id') == action_id
+            for action in (task.get('actions', []) or [])
+        )
+        for task in (manifest.get('tasks', []) or [])
+    )
+
 
 # Per source→actuator route: monotonic timestamp of the last forwarded command.
 # Used to honour an actuator's declared ``maxRateHz`` so constrained targets
 # (e.g. an ESP32) are not flooded by a generator's full-rate chunk stream.
 _actuator_route_ts: dict[tuple[str, str], float] = {}
 _actuator_route_lock = threading.Lock()
+
+# Serializes writes to a given client session. Flask-SocketIO/gevent performs a
+# ``room=<sid>`` emit by writing directly on that client's socket in the calling
+# greenlet, so two overlapping greenlets targeting the same session raise
+# ``gevent ConcurrentObjectUseError`` (observed when a fast source floods a
+# linked actuator). A per-sid lock makes those writes cooperative.
+_sid_emit_locks: dict[str, threading.Lock] = {}
+_sid_emit_locks_guard = threading.Lock()
+
+
+def _emit_to_sid(socketio, sid, event, data) -> None:
+    """Emit to a single session, serialized so concurrent greenlets never
+    write the same websocket at once."""
+    with _sid_emit_locks_guard:
+        lock = _sid_emit_locks.get(sid)
+        if lock is None:
+            lock = threading.Lock()
+            _sid_emit_locks[sid] = lock
+    with lock:
+        socketio.emit(event, data, room=sid)
+
+
+def _drop_sid_emit_lock(sid: str) -> None:
+    """Release the per-session emit lock on disconnect to avoid leaking one
+    lock per ephemeral sid."""
+    with _sid_emit_locks_guard:
+        _sid_emit_locks.pop(sid, None)
 
 
 def _actuator_delivery_prefs(task: dict | None) -> dict:
@@ -251,10 +306,10 @@ def _route_to_actuators(socketio, state, source_id, payload):
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     logger.error("Failed to encode payload for actuator %s: %s", actuator_id, exc)
 
-        socketio.emit('execute_command', {
+        _emit_to_sid(socketio, sid, 'execute_command', {
             'provider_id': f'prov_{actuator_id}',
             'command': {'action': 'set_value', 'payload': command_payload},
-        }, room=sid)
+        })
 
 
 # pylint: disable=too-many-locals, too-many-statements, too-many-branches
@@ -283,6 +338,15 @@ def register(socketio, state, recorder, replayer, client_manager):
         # a shared secret through the same channel they would sign with.
         if is_auth_required() and not state.is_ui_internal_source(source_id):
             sender_sid: str = request.sid  # type: ignore[attr-defined]
+            owner_sid = state.find_sid_for_source(source_id)
+            if owner_sid != sender_sid:
+                # A valid secret is not enough: the packet must come from the
+                # session that actually registered this source.
+                logger.warning(
+                    "data_stream for source=%s rejected: sent by sid=%s, owned by sid=%s",
+                    source_id, sender_sid, owner_sid,
+                )
+                return
             secret_hex = state.get_secret_for_source(source_id)
             if secret_hex is None:
                 # Unknown source, pending provider, or revoked credential.
@@ -516,7 +580,7 @@ def register(socketio, state, recorder, replayer, client_manager):
                             }
                         }
                     }
-                    socketio.emit('execute_command', cmd_payload, room=provider_sid)
+                    _emit_to_sid(socketio, provider_sid, 'execute_command', cmd_payload)
                     logger.debug("Forwarded execute_task command for task %s to provider sid %s", task_id, provider_sid)
 
     @socketio.on('task_unassigned')
@@ -535,22 +599,52 @@ def register(socketio, state, recorder, replayer, client_manager):
     @socketio.on('cmd_control')
     def handle_control_command(cmd):
         """Forwards a control command to a specific provider."""
+        if not isinstance(cmd, dict):
+            return
         provider_id_with_prefix = cmd.get('provider_id')
         if not provider_id_with_prefix:
             return
 
-        provider_id = provider_id_with_prefix.replace('prov_', '')
+        provider_id = _strip_prov_prefix(provider_id_with_prefix)
+        command = cmd.get('command')
+        if not isinstance(command, dict):
+            return
+        action_id = command.get('action')
+        routing = command.get('routing', 'direct')
 
         if state.recording:
             recorder.write({'type': 'CONTROL_CMD', 'payload': cmd})
 
-        sid = state.find_provider_sid(provider_id)
+        if routing == 'broadcast':
+            target_sids = {
+                manifest.get('sid')
+                for manifest in state.get_providers_list()
+                if manifest.get('sid') and _manifest_supports_action(manifest, action_id)
+            }
+            for target_sid in target_sids:
+                _emit_to_sid(socketio, target_sid, 'execute_command', cmd)
+            logger.info(
+                "Broadcast action %s from %s to %d providers",
+                action_id, provider_id, len(target_sids),
+            )
+            return
+
+        if routing != 'direct':
+            logger.warning("Unsupported command routing %s for %s", routing, provider_id)
+            return
+
+        # Hardware commands conventionally use ``prov_<provider-id>`` while
+        # UI-internal adapters register that prefixed value as their manifest
+        # ID. Accept both forms and never fall back to a broadcast: direct
+        # actions must stay bound to the requested provider.
+        sid = (
+            state.find_provider_sid(provider_id)
+            or state.find_provider_sid(provider_id_with_prefix)
+        )
         if sid:
-            socketio.emit('execute_command', cmd, room=sid)
+            _emit_to_sid(socketio, sid, 'execute_command', cmd)
         else:
-            # Maybe it's a virtual provider on the client, broadcast to all UIs.
-            logger.warning("SID for %s not found, broadcasting to UIs", provider_id)
-            socketio.emit('execute_command', cmd, room='ui_clients')
+            logger.warning("Direct action %s target %s not found; dropping command", action_id, provider_id)
 
     @socketio.on('link_source')
     def handle_link_source(data):
@@ -558,7 +652,7 @@ def register(socketio, state, recorder, replayer, client_manager):
         if not isinstance(data, dict):
             return
         source_id = data.get('source_id') or data.get('sourceId')
-        actuator_id = (data.get('actuator_id') or '').replace('prov_', '')
+        actuator_id = _strip_prov_prefix(data.get('actuator_id') or '')
         if not source_id or not actuator_id:
             return
         state.add_actuator_link(source_id, actuator_id)
@@ -570,7 +664,7 @@ def register(socketio, state, recorder, replayer, client_manager):
         if not isinstance(data, dict):
             return
         source_id = data.get('source_id') or data.get('sourceId')
-        actuator_id = (data.get('actuator_id') or '').replace('prov_', '')
+        actuator_id = _strip_prov_prefix(data.get('actuator_id') or '')
         if not source_id or not actuator_id:
             return
         state.remove_actuator_link(source_id, actuator_id)
@@ -594,9 +688,50 @@ def register(socketio, state, recorder, replayer, client_manager):
         task_id = data.get('task_id')
         changes = data.get('changes', {})
         if task_id and changes:
+            # Only the session that registered the task may change its meta;
+            # otherwise any connected socket could recolour or rename foreign tasks.
+            owner_sid = state.find_sid_for_source(task_id)
+            if owner_sid != request.sid:
+                logger.warning(
+                    "provider_meta_changed for task %s rejected: sid=%s is not the owner (%s)",
+                    task_id, request.sid, owner_sid,
+                )
+                return
             state.update_task_meta(task_id, changes)
         logger.debug("📢 Provider meta changed, broadcasting to UIs: %s", data)
         socketio.emit('provider_meta_changed', data, room='ui_clients')
+
+    @socketio.on('deregister_provider')
+    def handle_deregister_provider(data):
+        """A provider announces that one of its manifests is going away.
+
+        Used by the bridge daemon, which multiplexes several devices over a
+        single session and therefore cannot rely on socket disconnect alone.
+        """
+        if not isinstance(data, dict):
+            return
+        provider_id = _strip_prov_prefix(data.get('provider_id') or data.get('providerId') or '')
+        if not provider_id:
+            return
+        sender_sid = request.sid
+        if state.find_sid_for_source(provider_id) != sender_sid:
+            logger.warning(
+                "deregister_provider for %s rejected: sid=%s is not the owner",
+                provider_id, sender_sid,
+            )
+            return
+        removed = state.remove_manifest_from_sid(sender_sid, provider_id)
+        logger.info("👋 Provider %s deregistered by sid %s", provider_id, sender_sid)
+        for manifest in removed:
+            socketio.emit('provider_disconnected', {
+                'provider_id': manifest.get('id'),
+                'timestamp': time.time(),
+            }, room='ui_clients')
+        socketio.emit(
+            'available_providers',
+            {'providers': state.get_providers_list()},
+            room='ui_clients',
+        )
 
     # --- TASK CONFIGURATION (ALIAS & COLOR) -----------------------------
     @socketio.on('set_task_alias')
@@ -618,6 +753,29 @@ def register(socketio, state, recorder, replayer, client_manager):
                 'timestamp': time.time()
             }, room='ui_clients')
             logger.debug("Alias for task %s set to %r", task_id, alias)
+
+    @socketio.on('set_device_name')
+    def handle_set_device_name(data):
+        """Set the operator display name for a device."""
+        if not isinstance(data, dict):
+            return
+        device_id = data.get('device_id') or data.get('deviceId')
+        name = data.get('name')
+        if not isinstance(device_id, str) or not device_id:
+            return
+        if name is not None and not isinstance(name, str):
+            return
+        if state.set_device_name(device_id, name):
+            socketio.emit('device_config_changed', {
+                'device_id': device_id,
+                'changes': {'name': name},
+                'timestamp': time.time(),
+            }, room='ui_clients')
+            socketio.emit(
+                'available_providers',
+                {'providers': state.get_providers_list()},
+                room='ui_clients',
+            )
 
     @socketio.on('set_task_color')
     def handle_set_task_color(data):

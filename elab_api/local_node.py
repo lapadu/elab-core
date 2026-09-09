@@ -11,13 +11,18 @@ import logging
 import signal
 import threading
 import time
-import uuid
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 import zmq
 
 from .shared_memory_channel import SharedMemoryChannel
+
+try:
+    from elab_clients_core.python.shared.identity import resolve_device_identity
+except ImportError:  # slim deployments ship only the shared/ directory
+    from shared.identity import resolve_device_identity  # type: ignore[import-not-found]
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +32,38 @@ _DEFAULT_NOTIFY_PORT = 5581
 _CONTROL_SOCKET_TIMEOUT_MS = 10000
 _REGISTER_MAX_ATTEMPTS = 3
 _REGISTER_RETRY_DELAY_S = 0.5
+
+
+@dataclass(frozen=True)
+class DeviceDefinition:
+    """Schema-compatible identity and persistence metadata for a device."""
+
+    device_id: str
+    model: str
+    anchor: str
+    name: Optional[str] = None
+    firmware_version: Optional[str] = None
+    persist_capable: bool = False
+
+    def to_manifest(self) -> Dict[str, Any]:
+        """Return the device definition using ManifestSchema property names."""
+        if self.anchor not in {"efuse_mac", "serial", "ble_mac", "assigned", "ephemeral"}:
+            raise ValueError(
+                "Unknown device anchor. Expected one of: "
+                "efuse_mac, serial, ble_mac, assigned, ephemeral"
+            )
+
+        device: Dict[str, Any] = {
+            "id": self.device_id,
+            "model": self.model,
+            "anchor": self.anchor,
+            "persistCapable": self.persist_capable,
+        }
+        if self.name:
+            device["name"] = self.name
+        if self.firmware_version:
+            device["firmwareVersion"] = self.firmware_version
+        return device
 
 
 class LocalNode:
@@ -50,12 +87,31 @@ class LocalNode:
         bridge_host: str = "127.0.0.1",
         control_port: int = _DEFAULT_CONTROL_PORT,
         notify_port: int = _DEFAULT_NOTIFY_PORT,
+        device: Optional[DeviceDefinition] = None,
+        category: str = "VIRTUAL_SCRIPT",
+        provider_version: str = "1.0.0",
+        api_version: str = "2.1.0",
+        persist_config: bool = False,
     ):
         self.name = name
-        self.node_id = f"local_node_{uuid.uuid4().hex[:8]}"
+        # A node id that changed on every start forced operator re-approval and
+        # left one orphan credential behind per run, so it is persisted per name.
+        self._identity = resolve_device_identity("local_node", instance=name, name=name)
+        self.node_id = self._identity.device_id
         self._bridge_host = bridge_host
         self._control_port = control_port
         self._notify_port = notify_port
+        self.device = device or DeviceDefinition(
+            device_id=self._identity.device_id,
+            model=self._identity.model,
+            anchor=self._identity.anchor,
+            name=name,
+            persist_capable=False,
+        )
+        self._category = category
+        self._provider_version = provider_version
+        self._api_version = api_version
+        self._persist_config = persist_config
 
         self._tasks: Dict[str, Dict[str, Any]] = {}
         self._config_callbacks: Dict[str, Callable] = {}
@@ -96,6 +152,15 @@ class LocalNode:
         ui_url: Optional[str] = None,
         ui_component_name: Optional[str] = None,
         ui_integrity: Optional[str] = None,
+        alias: Optional[str] = None,
+        decimals: Optional[int] = None,
+        group_id: Optional[str] = None,
+        virtual: bool = False,
+        group: Optional[str] = None,
+        actions: Optional[List[Dict[str, Any]]] = None,
+        decoder: Optional[Dict[str, Any]] = None,
+        ui_views: Optional[List[Dict[str, Any]]] = None,
+        ui_default_template: Optional[str] = None,
     ) -> None:
         """Register a task with the E-Lab dispatcher via the Bridge.
 
@@ -128,6 +193,24 @@ class LocalNode:
             React component name (mode=custom).
         ui_integrity : str, optional
             SRI hash for the plugin script.
+        alias : str, optional
+            Operator-facing display alias.
+        decimals : int, optional
+            Number of decimal places rendered by the UI.
+        group_id : str, optional
+            Functional group identifier within the provider.
+        virtual : bool
+            Mark the task as a virtual task.
+        group : str, optional
+            Task exclusivity group.
+        actions : list[dict], optional
+            Declarative actor actions exposed by the UI.
+        decoder : dict, optional
+            Decoder definition for transport-to-engineering-unit conversion.
+        ui_views : list[dict], optional
+            Additional UI views conforming to the manifest schema.
+        ui_default_template : str, optional
+            Default template used when the task exposes multiple views.
         """
         task_def: Dict[str, Any] = {
             "id": task_id,
@@ -143,6 +226,20 @@ class LocalNode:
             task_def["color"] = color
         if tags:
             task_def["tags"] = tags
+        if alias is not None:
+            task_def["alias"] = alias
+        if decimals is not None:
+            task_def["decimals"] = decimals
+        if group_id is not None:
+            task_def["groupId"] = group_id
+        if virtual:
+            task_def["virtual"] = True
+        if group is not None:
+            task_def["group"] = group
+        if actions is not None:
+            task_def["actions"] = actions
+        if decoder is not None:
+            task_def["decoder"] = decoder
 
         # Build config object
         task_config: Dict[str, Any] = {}
@@ -163,6 +260,10 @@ class LocalNode:
                 task_def["ui"]["componentName"] = ui_component_name
             if ui_integrity:
                 task_def["ui"]["integrity"] = ui_integrity
+        if ui_views is not None:
+            task_def["ui"]["views"] = ui_views
+        if ui_default_template is not None:
+            task_def["ui"]["defaultTemplate"] = ui_default_template
 
         self._tasks[task_id] = task_def
         logger.info("Task '%s' registered locally. Will sync on run().", task_id)
@@ -176,6 +277,11 @@ class LocalNode:
         color: Optional[str] = None,
         tags: Optional[List[str]] = None,
         unit: Optional[str] = None,
+        alias: Optional[str] = None,
+        decimals: Optional[int] = None,
+        group_id: Optional[str] = None,
+        actions: Optional[List[Dict[str, Any]]] = None,
+        decoder: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Register a MATH task with an input slot (like Mean).
 
@@ -200,6 +306,16 @@ class LocalNode:
             Freeform tags.
         unit : str, optional
             Measurement unit.
+        alias : str, optional
+            Operator-facing display alias.
+        decimals : int, optional
+            Number of decimal places rendered by the UI.
+        group_id : str, optional
+            Functional group identifier within the provider.
+        actions : list[dict], optional
+            Declarative actor actions exposed by the UI.
+        decoder : dict, optional
+            Decoder definition for transport-to-engineering-unit conversion.
         """
         task_def: Dict[str, Any] = {
             "id": task_id,
@@ -223,6 +339,16 @@ class LocalNode:
         }
         if tags:
             task_def["tags"] = tags
+        if alias is not None:
+            task_def["alias"] = alias
+        if decimals is not None:
+            task_def["decimals"] = decimals
+        if group_id is not None:
+            task_def["groupId"] = group_id
+        if actions is not None:
+            task_def["actions"] = actions
+        if decoder is not None:
+            task_def["decoder"] = decoder
 
         task_config: Dict[str, Any] = {}
         if unit:
@@ -469,10 +595,11 @@ class LocalNode:
         manifest = {
             "id": self.node_id,
             "name": self.name,
-            "category": "VIRTUAL_SCRIPT",
-            "providerVersion": "1.0.0",
-            "apiVersion": "2.0.0",
-            "persistConfig": False,
+            "device": self.device.to_manifest(),
+            "category": self._category,
+            "providerVersion": self._provider_version,
+            "apiVersion": self._api_version,
+            "persistConfig": self._persist_config,
             "tasks": list(self._tasks.values()),
         }
         for attempt in range(1, _REGISTER_MAX_ATTEMPTS + 1):

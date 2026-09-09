@@ -21,7 +21,53 @@ class TestManifestBuilder:
         assert m["name"] == "Test Provider"
         assert len(m["tasks"]) == 1
         assert m["providerVersion"] == "1.0.0"
-        assert m["apiVersion"] == "2.0.0"
+        assert m["apiVersion"] == "2.1.0"
+
+    def test_default_device_block_mirrors_provider(self, builder):
+        """Without explicit device info the provider acts as its own device."""
+        builder.add_task("t1", "S", "SENSOR", "generic")
+        device = builder.build()["device"]
+        assert device["id"] == "test-prov"
+        assert device["model"] == "test-prov"
+        assert device["anchor"] == "ephemeral"
+        assert device["persistCapable"] is False
+
+    def test_explicit_device_identity(self):
+        """A hardware-anchored device id is kept separate from the provider id."""
+        b = ManifestBuilder(
+            "esp32_voltmeter_a4c138112233_adc",
+            "ESP32 ADC",
+            device_id="esp32_voltmeter_a4c138112233",
+            model="esp32_voltmeter",
+            device_anchor="efuse_mac",
+            device_name="Voltmeter Vorstufe",
+            firmware_version="1.2.0",
+            persist_capable=True,
+        )
+        b.add_task("esp32_voltmeter_a4c138112233_ch1", "CH1", "SENSOR", "generic")
+        device = b.build()["device"]
+        assert device["id"] == "esp32_voltmeter_a4c138112233"
+        assert device["model"] == "esp32_voltmeter"
+        assert device["anchor"] == "efuse_mac"
+        assert device["name"] == "Voltmeter Vorstufe"
+        assert device["firmwareVersion"] == "1.2.0"
+        assert device["persistCapable"] is True
+
+    def test_unknown_device_anchor_rejected(self):
+        """An unknown anchor is a typo, not a silently accepted value."""
+        with pytest.raises(ValueError, match="Unknown device anchor"):
+            ManifestBuilder("p", "P", device_anchor="magic")
+
+    def test_duplicate_task_id_rejected(self, builder):
+        """Task ids must be unique - duplicates would collide in the registry."""
+        builder.add_task("t1", "S", "SENSOR", "generic")
+        with pytest.raises(ValueError, match="Duplicate task id"):
+            builder.add_task("t1", "S2", "SENSOR", "generic")
+
+    def test_alias_task_option(self, builder):
+        """An operator alias can be pre-seeded by a self-persisting device."""
+        builder.add_task("t1", "S", "SENSOR", "generic", alias="Eingang Vorstufe")
+        assert builder.build()["tasks"][0]["alias"] == "Eingang Vorstufe"
 
     def test_add_sensor_task(self, builder):
         """add_task for SENSOR should produce valid task entry."""

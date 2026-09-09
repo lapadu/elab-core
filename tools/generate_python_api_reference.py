@@ -309,6 +309,16 @@ def _render_markdown(modules: Iterable[ModuleInfo]) -> str:
         "",
         f"Generated: {generated}",
         "",
+        "## Import",
+        "",
+        "Use the public package import below to connect a script to the E-Lab Bridge:",
+        "",
+        "```python",
+        "from elab_api import DeviceDefinition, LocalNode",
+        "```",
+        "",
+        "The Python package is the runtime client for external scripts. Optional JavaScript UI plugins are loaded by the React workbench for task presentation; they do not connect directly to ZeroMQ or shared memory. See [local_api_bridge.md](local_api_bridge.md) and [plugin_development.md](plugin_development.md) for the distinction.",
+        "",
     ]
 
     for module in modules:

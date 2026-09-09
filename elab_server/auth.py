@@ -4,9 +4,14 @@ Trust on First Use (TOFU) device pairing + HMAC-SHA256 signed data_stream packet
 
 Identity model
 --------------
-* ``device_id``     -> ``manifest["id"]`` (permanent, client-chosen, stable across reboots)
+* ``device_id``     -> ``manifest["device"]["id"]``, the physical/logical unit. Falls back to
+  ``manifest["id"]`` for legacy manifests that carry no ``device`` block. Several providers
+  of the same device share one credential.
 * ``manifest_hash`` -> SHA-256 hex of a canonicalized projection of the manifest
 * ``secret``        -> 32-byte server-generated value, sent once to the client at approval
+
+The ``device.anchor`` field states where the id came from. Anything but ``ephemeral`` is
+expected to survive a restart; ``ephemeral`` devices get a session-scoped pairing only.
 
 Lifecycle
 ---------
@@ -49,6 +54,46 @@ _VOLATILE_MANIFEST_FIELDS = frozenset({
     "client_ip",
     "isUiInstance",
 })
+
+#: Device id origins, ordered from strongest to weakest. ``ephemeral`` means the id is
+#: regenerated on every start, so a persistent credential would only accumulate garbage.
+DEVICE_ANCHORS = ("efuse_mac", "serial", "ble_mac", "assigned", "ephemeral")
+
+
+def resolve_device_id(manifest: Dict[str, Any]) -> str:
+    """Return the device id of *manifest*, falling back to the provider id.
+
+    Legacy manifests without a ``device`` block are treated as single-provider
+    devices so existing deployments keep their pairing.
+    """
+    device = manifest.get("device")
+    if isinstance(device, dict):
+        device_id = device.get("id")
+        if isinstance(device_id, str) and device_id:
+            return device_id
+    return str(manifest.get("id") or "")
+
+
+def resolve_device_anchor(manifest: Dict[str, Any]) -> str:
+    """Return the declared device anchor, or ``'ephemeral'`` when unknown."""
+    device = manifest.get("device")
+    if isinstance(device, dict):
+        anchor = device.get("anchor")
+        if anchor in DEVICE_ANCHORS:
+            return str(anchor)
+    return "ephemeral"
+
+
+def is_persist_capable(manifest: Dict[str, Any]) -> bool:
+    """Whether the device stores operator configuration (alias, color) itself.
+
+    ``device.persistCapable`` is authoritative; ``persistConfig`` remains the
+    legacy spelling for manifests without a ``device`` block.
+    """
+    device = manifest.get("device")
+    if isinstance(device, dict) and "persistCapable" in device:
+        return bool(device.get("persistCapable"))
+    return bool(manifest.get("persistConfig", False))
 
 
 def _strip_volatile(obj: Any) -> Any:

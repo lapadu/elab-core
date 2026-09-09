@@ -59,6 +59,11 @@ def _credentials_dir() -> Path:
 
 def _credential_path(device_id: str) -> Path:
     safe = "".join(c if c.isalnum() or c in "_-." else "_" for c in device_id)
+    if safe != device_id:
+        # Sanitizing is lossy ("dev:1" and "dev_1" would share a file), so keep
+        # a digest of the original id to guarantee one file per device.
+        digest = hashlib.sha256(device_id.encode("utf-8")).hexdigest()[:12]
+        safe = f"{safe}.{digest}"
     return _credentials_dir() / f"{safe}.json"
 
 

@@ -13,17 +13,42 @@ logger = logging.getLogger(__name__)
 
 class ManifestBuilder:
     """Builder class for creating valid E-Lab provider manifests."""
+
+    #: Device id origins, ordered from strongest to weakest anchor.
+    DEVICE_ANCHORS = ("efuse_mac", "serial", "ble_mac", "assigned", "ephemeral")
+
     def __init__(self, provider_id: str, name: str, schema_dict: Optional[Dict[str, Any]] = None,
-                 category: str = "HARDWARE", persist_config: bool = False):
+                 category: str = "HARDWARE", persist_config: bool = False,
+                 device_id: Optional[str] = None, model: Optional[str] = None,
+                 device_anchor: str = "ephemeral", device_name: Optional[str] = None,
+                 firmware_version: Optional[str] = None,
+                 persist_capable: Optional[bool] = None):
+        if device_anchor not in self.DEVICE_ANCHORS:
+            joined = ", ".join(self.DEVICE_ANCHORS)
+            raise ValueError(f"Unknown device anchor '{device_anchor}'. Expected one of: {joined}")
+
         self.manifest = {
             "id": provider_id,
             "name": name,
             "category": category,
             "providerVersion": "1.0.0",
-            "apiVersion": "2.0.0",
+            "apiVersion": "2.1.0",
             "persistConfig": persist_config,
             "tasks": []
         }
+
+        device: Dict[str, Any] = {
+            "id": device_id or provider_id,
+            "model": model or provider_id,
+            "anchor": device_anchor,
+            "persistCapable": persist_config if persist_capable is None else persist_capable,
+        }
+        if device_name:
+            device["name"] = device_name
+        if firmware_version:
+            device["firmwareVersion"] = firmware_version
+        self.manifest["device"] = device
+
         if schema_dict:
             self.schema = schema_dict
         else:
@@ -48,6 +73,8 @@ class ManifestBuilder:
     _SUPPORTED_TASK_OPTIONS = {
         'group_id',
         'color',
+        'alias',
+        'decimals',
         'virtual',
         'config',
         'ui_template',
@@ -76,6 +103,12 @@ class ManifestBuilder:
             joined = ", ".join(sorted(unknown_options))
             raise TypeError(f"Unknown task option(s): {joined}")
 
+        if any(existing["id"] == task_id for existing in self.manifest["tasks"]):
+            raise ValueError(
+                f"Duplicate task id '{task_id}' in provider '{self.manifest['id']}'. "
+                "Task ids must be globally unique - prefix them with the device id."
+            )
+
         task = {
             "id": task_id,
             "name": name,
@@ -98,6 +131,8 @@ class ManifestBuilder:
         direct_mapping = {
             'group_id': 'groupId',
             'color': 'color',
+            'alias': 'alias',
+            'decimals': 'decimals',
             'config': 'config',
             'group': 'group',
             'actions': 'actions',

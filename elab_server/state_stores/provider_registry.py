@@ -20,30 +20,43 @@ class ProviderRegistry:
         self.providers: Dict[str, List[Dict[str, Any]]] = {}    # sid -> [manifests]
         self.decoders: Dict[str, Any] = {}                      # source_id -> decoder instance
         # O(1) lookup indices kept in sync with self.providers under the lock.
-        self._provider_sid_index: Dict[str, str] = {}           # provider_id / task_id -> sid
+        # Provider ids and task ids live in separate namespaces so a task id
+        # can never shadow another provider's id.
+        self._provider_sid_index: Dict[str, str] = {}           # provider_id -> sid
+        self._task_sid_index: Dict[str, str] = {}               # task_id -> sid
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
     def _index_manifest(self, sid: str, manifest: Dict[str, Any]) -> None:
-        """Register provider and task ids in the sid lookup index."""
+        """Register provider and task ids in the sid lookup indices."""
         pid = manifest.get('id')
         if pid:
             self._provider_sid_index[pid] = sid
         for task in manifest.get('tasks', []) or []:
             tid = task.get('id')
             if tid:
-                self._provider_sid_index[tid] = sid
+                self._task_sid_index[tid] = sid
 
     def _unindex_manifest(self, manifest: Dict[str, Any]) -> None:
-        """Remove a provider's ids from the sid lookup index."""
+        """Remove a provider's ids from the sid lookup indices.
+
+        Only index entries that still point at *this manifest's own sid* are
+        removed. A device that reconnects with a new sid (e.g. after a
+        RAW-capture WiFi teardown) re-registers and remaps the index to the
+        fresh sid. If the delayed disconnect of the stale sid arrives later, it
+        must not clobber those remapped entries — doing so would break
+        ``find_provider_sid`` routing and leave the widget stuck offline with
+        no data until the task is re-dragged.
+        """
+        owner_sid = manifest.get('sid')
         pid = manifest.get('id')
-        if pid and self._provider_sid_index.get(pid):
+        if pid and self._provider_sid_index.get(pid) == owner_sid:
             self._provider_sid_index.pop(pid, None)
         for task in manifest.get('tasks', []) or []:
             tid = task.get('id')
-            if tid:
-                self._provider_sid_index.pop(tid, None)
+            if tid and self._task_sid_index.get(tid) == owner_sid:
+                self._task_sid_index.pop(tid, None)
 
     @staticmethod
     def _build_decoders(manifest: Dict[str, Any]) -> Dict[str, Any]:
@@ -86,6 +99,35 @@ class ProviderRegistry:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+    def find_id_conflicts(self, sid: str, manifest: Dict[str, Any]) -> List[str]:
+        """Return ids of *manifest* that are already owned by a different sid.
+
+        Provider ids and task ids are indexed separately but share one global
+        name space: ``find_provider_sid`` and the HMAC gate both accept either
+        kind, so an id claimed as a task by one device and as a provider by
+        another would route ambiguously. Reporting the clash lets the caller
+        reject the registration instead of silently renaming it, which would
+        decouple the manifest from its pairing credential.
+        """
+        conflicts: List[str] = []
+        with self._ctx.lock:
+            candidates = [manifest.get('id')]
+            candidates.extend(
+                task.get('id')
+                for task in manifest.get('tasks', []) or []
+                if isinstance(task, dict)
+            )
+            for candidate in candidates:
+                if not candidate:
+                    continue
+                owner = (
+                    self._provider_sid_index.get(candidate)
+                    or self._task_sid_index.get(candidate)
+                )
+                if owner is not None and owner != sid:
+                    conflicts.append(candidate)
+        return conflicts
+
     def add_provider(self, sid: str, manifest: Dict[str, Any]) -> bool:
         """Adds a provider to the state."""
         if not isinstance(manifest, dict):
@@ -98,6 +140,26 @@ class ProviderRegistry:
             except ValidationError as e:
                 logger.warning("Invalid manifest: %s", e.message)
                 return False
+
+        task_ids = [
+            task.get('id')
+            for task in manifest.get('tasks', []) or []
+            if isinstance(task, dict) and task.get('id')
+        ]
+        if len(set(task_ids)) != len(task_ids):
+            logger.warning(
+                "Provider %s declares duplicate task ids; registration refused.",
+                manifest.get('id'),
+            )
+            return False
+
+        conflicts = self.find_id_conflicts(sid, manifest)
+        if conflicts:
+            logger.warning(
+                "Provider %s claims ids already owned by another session: %s",
+                manifest.get('id'), ", ".join(conflicts),
+            )
+            return False
 
         # Build decoders outside the lock so a slow / faulty decoder ctor
         # cannot block other state operations.
@@ -156,7 +218,10 @@ class ProviderRegistry:
         if not provider_id:
             return None
         with self._ctx.lock:
-            return self._provider_sid_index.get(provider_id)
+            sid = self._provider_sid_index.get(provider_id)
+            if sid is not None:
+                return sid
+            return self._task_sid_index.get(provider_id)
 
     def has_sid(self, sid: str) -> bool:
         """Whether any provider is registered under *sid*."""
@@ -179,11 +244,25 @@ class ProviderRegistry:
 
     def drop_manifest(self, sid: str, manifest_id: str) -> None:
         """Remove manifests with *manifest_id* from *sid*'s list (re-register path)."""
+        self.pop_manifest(sid, manifest_id)
+
+    def pop_manifest(self, sid: str, manifest_id: str) -> List[Dict[str, Any]]:
+        """Remove and return manifests with *manifest_id* from a session."""
         with self._ctx.lock:
             if sid in self.providers:
+                dropped = [
+                    p for p in self.providers.get(sid, []) if p.get('id') == manifest_id
+                ]
+                for manifest in dropped:
+                    self._unindex_manifest(manifest)
+                    for task in manifest.get('tasks', []) or []:
+                        if isinstance(task, dict) and task.get('id'):
+                            self.decoders.pop(task['id'], None)
                 self.providers[sid] = [
                     p for p in self.providers.get(sid, []) if p.get('id') != manifest_id
                 ]
+                return dropped
+        return []
 
     def get_decoder(self, source_id: str) -> Any:
         """Return the active decoder for *source_id*, or ``None``."""
@@ -216,6 +295,8 @@ class ProviderRegistry:
 
     def update_provider_manifest(self, sid: str, manifest: Dict[str, Any]) -> bool:
         """Replace the registered manifest for a provider sid."""
+        from ..auth import is_persist_capable  # local import avoids a cycle
+
         with self._ctx.lock:
             if sid in self.providers:
                 old_list = self.providers[sid]
@@ -225,19 +306,25 @@ class ProviderRegistry:
                         if old_manifest.get('id') == new_id:
                             manifest['sid'] = sid
                             manifest['connected_at'] = old_manifest.get('connected_at', time.time())
-                            for task in manifest.get('tasks', []) or []:
-                                tid = task.get('id')
-                                if tid:
-                                    stored = (
-                                        self._ctx.config_store.get_task_config(tid)
-                                        if self._ctx.config_store else {}
-                                    )
-                                    if 'alias' in stored:
-                                        task['alias'] = stored['alias']
-                                    if 'color' in stored:
-                                        task['color'] = stored['color']
-                                    if 'decimals' in stored:
-                                        task['decimals'] = stored['decimals']
+                            # Devices that persist their own configuration ship the
+                            # authoritative values inside the manifest; never
+                            # overwrite them from the dispatcher's cache.
+                            if not is_persist_capable(manifest):
+                                for task in manifest.get('tasks', []) or []:
+                                    tid = task.get('id')
+                                    if tid:
+                                        stored = (
+                                            self._ctx.config_store.get_task_config(tid)
+                                            if self._ctx.config_store else {}
+                                        )
+                                        if 'alias' in stored:
+                                            task['alias'] = stored['alias']
+                                        if 'color' in stored:
+                                            task['color'] = stored['color']
+                                        if 'decimals' in stored:
+                                            task['decimals'] = stored['decimals']
+                            self._unindex_manifest(old_manifest)
+                            self._index_manifest(sid, manifest)
                             old_list[idx] = manifest
                             return True
         return False

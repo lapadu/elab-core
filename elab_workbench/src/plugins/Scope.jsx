@@ -8,6 +8,7 @@ export const ScopePlugin = new PluginBuilder("plugin_scope_v1", "Virtual Scope",
         name: "Scope (Pro)",
         color: "#10b981",
         virtual: true,
+        tags: ["Scope", "Oscilloscope", "Waveform", "Measure"],
         inputs: { source: null },
         extraChannels: [],
         config: {

@@ -57,14 +57,25 @@ except ImportError:
         apply_task_meta_update,
     )
     from shared.auth import ProviderAuth  # type: ignore[import-not-found]
+try:
+    from elab_clients_core.python.shared.identity import resolve_device_identity  # type: ignore[import-not-found]
+except ImportError:
+    from shared.identity import resolve_device_identity  # type: ignore[import-not-found]
 from elab_server.manifest_builder import (
     ManifestBuilder,
 )
 
 # --- CONFIGURATION ---
 UDP_PORT = 5005
-SENSOR_ID = "hw_temp_sensor"
 SENSOR_NAME = "Thermo-Sensor"
+DEVICE_MODEL = "hw_temp_sensor"
+# Set ELAB_SENSOR_INSTANCE to run more than one of these on a single host.
+IDENTITY = resolve_device_identity(
+    DEVICE_MODEL,
+    instance=os.environ.get("ELAB_SENSOR_INSTANCE"),
+    name=SENSOR_NAME,
+)
+SENSOR_ID = IDENTITY.device_id
 
 # --- LOGGING ---
 logging.basicConfig(
@@ -77,15 +88,22 @@ sio: Any = None
 # pylint: disable=C0301
 
 # --- DEFAULT MANIFEST ---
-builder = ManifestBuilder(SENSOR_ID, SENSOR_NAME)
+builder = ManifestBuilder(
+    SENSOR_ID,
+    SENSOR_NAME,
+    device_id=IDENTITY.device_id,
+    model=IDENTITY.model,
+    device_anchor=IDENTITY.anchor,
+    device_name=IDENTITY.name,
+)
 builder.add_task(
     task_id=f"{SENSOR_ID}_task",
-    name="Temperatur Kanal 1",
+    name="Temperature Channel 1",
     task_type="SENSOR",
     group_id="plugin_volt_v1",
     virtual=False,
     color="#ef4444",
-    tags=["Temp", "CPU", "Test"],
+    tags=["Temperature", "CPU", "Sensor"],
     config={
         "range": [0, 30],
         "unit": "°C",
@@ -118,14 +136,14 @@ builder.add_task(
 )
 builder.add_task(
     task_id=f"{SENSOR_ID}_sinus_task",
-    name="Sinus Generator",
+    name="Sine Generator",
     task_type="GENERATOR",
     group_id="plugin_sine_gen_v1",
     # Not virtual: this client is the data source. A virtual task would make the
     # workbench start its own JS sine factory on the same sourceId in parallel.
     virtual=False,
     color="#3b82f6",
-    tags=["Sine", "Test"],
+    tags=["Sine", "Generator", "Simulation"],
     config={
         "frequency": 10,
         "amplitude": 5.0,
@@ -168,7 +186,7 @@ builder.add_task(
 DEVICE_MANIFEST = builder.build()
 
 OVERRIDES_FILE = os.path.join(
-    project_root, "elab_clients", "temp_test_client_overrides.json"
+    project_root, "elab_clients_core", "temp_test_client_overrides.json"
 )
 load_overrides(DEVICE_MANIFEST, OVERRIDES_FILE)
 

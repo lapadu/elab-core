@@ -11,6 +11,11 @@ export interface ELabProviderManifest {
    */
   id: string;
   name: string;
+  device?: Device;
+  /**
+   * Marks a provider that only injects UI components and exposes no physical data source. The workbench hides such providers from the device tree.
+   */
+  isUiInstance?: boolean;
   /**
    * Provider category. HARDWARE for physical devices (incl. adapters), VIRTUAL_INTERNAL for built-in virtual sources, VIRTUAL_SCRIPT for script-based virtual sources.
    */
@@ -33,12 +38,47 @@ export interface ELabProviderManifest {
   tasks: [Task, ...Task[]];
   [k: string]: unknown;
 }
+/**
+ * Physical or logical unit that hosts this provider. One device may expose several providers; every provider of the same device shares one pairing credential.
+ */
+export interface Device {
+  /**
+   * Globally unique device instance identifier. Derived from a hardware anchor whenever possible so that two boards running identical firmware stay distinguishable.
+   */
+  id: string;
+  /**
+   * Type identity shared by all devices running the same firmware/implementation (e.g. esp32_voltmeter). Never unique per instance.
+   */
+  model: string;
+  /**
+   * Origin of the device id. 'assigned' means the dispatcher issued the id at pairing time; 'ephemeral' means the id is lost on restart and pairing cannot persist.
+   */
+  anchor: "efuse_mac" | "serial" | "ble_mac" | "assigned" | "ephemeral";
+  /**
+   * Human readable default name of the physical unit. The operator may override it; the override follows the persistConfig rules.
+   */
+  name?: string;
+  firmwareVersion?: string;
+  /**
+   * True if the device can store operator configuration (alias, color, task config) itself. When false the dispatcher keeps the configuration on the device's behalf.
+   */
+  persistCapable?: boolean;
+  [k: string]: unknown;
+}
 export interface Task {
   /**
-   * Permanent, unique task identifier. Must remain constant across restarts – like a hardware serial number or MAC-derived value. Used by E-Lab to track configuration (alias, color) persistently.
+   * Permanent, globally unique task identifier. Must remain constant across restarts – prefix it with the device id to stay unique across identical devices. Used by E-Lab to track configuration (alias, color) persistently.
    */
   id: string;
   name: string;
+  /**
+   * Operator-chosen display name that overrides 'name' in the UI (e.g. 'Eingang Vorstufe'). Set via set_task_alias; never overwrite 'name' itself.
+   */
+  alias?: string;
+  /**
+   * Number of decimal places the UI should render for this task's value.
+   */
+  decimals?: number;
   type: "SENSOR" | "ACTUATOR" | "MATH" | "MEASURE" | "CONTROL" | "GENERATOR";
   /**
    * Groups tasks within a provider into a functional unit. The hardware supports only one task of a group at a time.

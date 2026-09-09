@@ -65,6 +65,12 @@ export const SOCKET_EVENTS = {
   APPROVE_PENDING_DEVICE: 'approve_pending_device',
   REVOKE_DEVICE: 'revoke_device',
   DELETE_DEVICE_CREDENTIAL: 'delete_device_credential',
+
+  // Task configuration. The dispatcher decides whether the value is stored
+  // in its own database or pushed to a device that persists its own config.
+  SET_TASK_ALIAS: 'set_task_alias',
+  SET_DEVICE_NAME: 'set_device_name',
+  SET_TASK_COLOR: 'set_task_color',
   SET_TASK_DECIMALS: 'set_task_decimals'
 };
 
